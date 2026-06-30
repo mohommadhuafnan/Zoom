@@ -30,14 +30,30 @@ export function setupSocket(io) {
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth?.token;
-      if (!token) return next(new Error('Authentication required'));
+      const guestName = socket.handshake.auth?.guestName?.trim();
+      const guestId = socket.handshake.auth?.guestId;
 
-      const decoded = jwt.verify(token, env.jwtSecret);
-      const user = await getUserById(decoded.userId);
-      if (!user) return next(new Error('User not found'));
+      if (token) {
+        const decoded = jwt.verify(token, env.jwtSecret);
+        const user = await getUserById(decoded.userId);
+        if (!user) return next(new Error('User not found'));
+        socket.user = user;
+        return next();
+      }
 
-      socket.user = user;
-      next();
+      if (guestName && guestId) {
+        if (guestName.length < 2 || guestName.length > 40) {
+          return next(new Error('Display name must be 2–40 characters'));
+        }
+        socket.user = {
+          id: `guest_${guestId}`,
+          displayName: guestName,
+          isGuest: true,
+        };
+        return next();
+      }
+
+      return next(new Error('Authentication required'));
     } catch {
       next(new Error('Invalid token'));
     }
@@ -197,12 +213,14 @@ async function joinRoom(socket, io, meeting, isHost) {
   socket.roomCode = roomCode;
   if (isHost) socket.join(meeting.hostId);
 
-  const participation = await logParticipationJoin({
-    meetingId: meeting.id,
-    userId: socket.user.id,
-    role: isHost ? 'host' : 'participant',
-  });
-  participationMap.set(socket.id, participation.id);
+  if (!socket.user.isGuest) {
+    const participation = await logParticipationJoin({
+      meetingId: meeting.id,
+      userId: socket.user.id,
+      role: isHost ? 'host' : 'participant',
+    });
+    participationMap.set(socket.id, participation.id);
+  }
 
   const room = getRoom(roomCode);
   const state = {

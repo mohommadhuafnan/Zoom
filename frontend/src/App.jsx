@@ -23,14 +23,7 @@ export default function App() {
       />
       <Route path="/join" element={<JoinMeeting />} />
       <Route path="/join/:code" element={<JoinMeeting />} />
-      <Route
-        path="/meeting/:code"
-        element={
-          <ProtectedRoute>
-            <MeetingRoom />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/meeting/:code" element={<MeetingRoom />} />
       <Route
         path="/history"
         element={

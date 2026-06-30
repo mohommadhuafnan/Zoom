@@ -20,15 +20,31 @@ export function connectSocket(token) {
     transports: ['websocket', 'polling'],
   });
 
-  socket.on('connect', () => {
+  attachSocketHandlers(socket);
+  return socket;
+}
+
+export function connectSocketAsGuest(displayName, guestId) {
+  if (socket?.connected) return socket;
+
+  socket = io(getSocketUrl(), {
+    auth: { guestName: displayName, guestId },
+    transports: ['websocket', 'polling'],
+  });
+
+  attachSocketHandlers(socket);
+  return socket;
+}
+
+function attachSocketHandlers(sock) {
+  sock.off('connect');
+  sock.off('connect_error');
+  sock.on('connect', () => {
     console.log('Connected to signaling server');
   });
-
-  socket.on('connect_error', (err) => {
+  sock.on('connect_error', (err) => {
     console.error('Socket connection error:', err.message);
   });
-
-  return socket;
 }
 
 export function disconnectSocket() {

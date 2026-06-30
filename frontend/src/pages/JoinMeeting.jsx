@@ -1,122 +1,163 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Video } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Video, User } from 'lucide-react';
 import { api } from '../services/api';
+import { connectSocket, connectSocketAsGuest } from '../services/socket';
+import { setGuestSession } from '../utils/guestSession';
+import { useAuth } from '../context/AuthContext';
+import AnimatedJoinBackground from '../components/join/AnimatedJoinBackground';
 
 export default function JoinMeeting() {
   const { code: urlCode } = useParams();
   const [code, setCode] = useState(urlCode?.toUpperCase() || '');
+  const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState(null);
-  const autoJoinAttempted = useRef(false);
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
-
-  const joinMeeting = useCallback(
-    async (meetingCode) => {
-      const trimmed = meetingCode.trim().toUpperCase();
-      if (!trimmed) return;
-
-      if (!user) {
-        navigate('/login', { state: { from: { pathname: `/join/${trimmed}` } } });
-        return;
-      }
-
-      setLoading(true);
-      setError('');
-      try {
-        const { meeting } = await api.getMeeting(trimmed);
-        if (!meeting.isActive) {
-          setError('This meeting has ended');
-          return;
-        }
-        navigate(`/meeting/${meeting.meetingCode}`);
-      } catch (err) {
-        setError(err.message || 'Meeting not found');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [user, navigate]
-  );
 
   useEffect(() => {
     if (urlCode) setCode(urlCode.toUpperCase());
   }, [urlCode]);
 
   useEffect(() => {
-    const trimmed = urlCode?.trim().toUpperCase();
+    if (user?.displayName) setDisplayName(user.displayName);
+  }, [user]);
+
+  useEffect(() => {
+    const trimmed = code.trim().toUpperCase();
     if (!trimmed) return;
     api
       .getMeetingPublic(trimmed)
       .then(({ meeting }) => setPreview(meeting))
       .catch(() => setPreview(null));
-  }, [urlCode]);
+  }, [code]);
 
-  useEffect(() => {
-    if (authLoading || !user || !urlCode || autoJoinAttempted.current) return;
-    autoJoinAttempted.current = true;
-    joinMeeting(urlCode);
-  }, [authLoading, user, urlCode, joinMeeting]);
+  const handleJoin = async (e) => {
+    e.preventDefault();
+    const trimmedCode = code.trim().toUpperCase();
+    const name = displayName.trim();
 
-  const handleJoin = (e) => {
-    e?.preventDefault();
-    joinMeeting(code);
+    if (!trimmedCode) {
+      setError('Enter a meeting ID');
+      return;
+    }
+    if (name.length < 2) {
+      setError('Enter your display name (at least 2 characters)');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const { meeting } = await api.getMeetingPublic(trimmedCode);
+      if (!meeting.isActive) {
+        setError('This meeting has ended');
+        return;
+      }
+
+      const guestId = crypto.randomUUID();
+      setGuestSession({ displayName: name, guestId });
+
+      const token = localStorage.getItem('token');
+      if (token) {
+        connectSocket(token);
+      } else {
+        connectSocketAsGuest(name, guestId);
+      }
+
+      navigate(`/meeting/${meeting.meetingCode}`, {
+        state: { displayName: name },
+      });
+    } catch (err) {
+      setError(err.message || 'Meeting not found');
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const initial = displayName.trim().charAt(0).toUpperCase() || '?';
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-gray-100 px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center px-4 relative">
+      <AnimatedJoinBackground />
+
+      <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-zoom-blue rounded-2xl mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-zoom-blue/90 backdrop-blur rounded-2xl mb-4 shadow-lg shadow-blue-500/30">
             <Video className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Join UniMeet</h1>
-          <p className="text-gray-500 mt-1">
-            {preview?.title ? `You're joining: ${preview.title}` : 'Enter the meeting ID from your invite link'}
+          <h1 className="text-2xl font-bold text-white">Join meeting</h1>
+          <p className="text-blue-100/80 mt-2 text-sm">
+            {preview?.title ? preview.title : 'No sign-in required — enter your name to join'}
           </p>
         </div>
 
-        <form onSubmit={handleJoin} className="bg-white rounded-2xl shadow-lg p-8 space-y-5">
+        <form
+          onSubmit={handleJoin}
+          className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl p-8 space-y-5"
+        >
           {error && (
-            <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
-          )}
-          {!user && !authLoading && (
-            <div className="bg-blue-50 text-blue-800 text-sm px-4 py-3 rounded-lg">
-              Sign in or create an account to join this meeting.
+            <div className="bg-red-500/20 border border-red-400/30 text-red-100 text-sm px-4 py-3 rounded-lg">
+              {error}
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Meeting ID</label>
-            <input
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="e.g. ABC123XYZ"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg tracking-wider focus:ring-2 focus:ring-zoom-blue focus:border-transparent outline-none uppercase"
-            />
+
+          <div className="flex flex-col items-center py-2">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-zoom-blue to-cyan-500 flex items-center justify-center text-3xl font-bold text-white shadow-lg mb-2 ring-4 ring-white/20">
+              {initial}
+            </div>
+            <p className="text-white/60 text-xs">Your preview</p>
           </div>
-          <button
-            type="submit"
-            disabled={loading || authLoading || !code.trim()}
-            className="w-full zoom-btn-primary py-3 disabled:opacity-50"
-          >
-            {loading ? 'Joining…' : user ? 'Join meeting' : 'Sign in to join'}
-          </button>
-          {!user && (
-            <p className="text-center text-sm text-gray-500">
-              No account?{' '}
-              <Link
-                to="/register"
-                state={{ from: { pathname: urlCode ? `/join/${urlCode.toUpperCase()}` : '/join' } }}
-                className="text-zoom-blue hover:underline font-medium"
-              >
-                Sign up free
-              </Link>
+
+          <div>
+            <label className="block text-sm font-medium text-white/90 mb-1">Your name</label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Display name"
+                maxLength={40}
+                autoFocus
+                className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 focus:ring-2 focus:ring-zoom-blue focus:border-transparent outline-none"
+              />
+            </div>
+          </div>
+
+          {!urlCode && (
+            <div>
+              <label className="block text-sm font-medium text-white/90 mb-1">Meeting ID</label>
+              <input
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="e.g. ABC123XYZ"
+                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 tracking-wider uppercase focus:ring-2 focus:ring-zoom-blue outline-none"
+              />
+            </div>
+          )}
+
+          {urlCode && (
+            <p className="text-center text-white/50 text-sm">
+              Meeting ID: <span className="text-white font-mono tracking-wider">{code}</span>
             </p>
           )}
+
+          <button
+            type="submit"
+            disabled={loading || !displayName.trim() || !code.trim()}
+            className="w-full bg-zoom-blue hover:bg-blue-500 text-white font-semibold py-3.5 rounded-xl transition-all hover:shadow-lg hover:shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Joining…' : 'Join meeting'}
+          </button>
+
+          <p className="text-center text-white/40 text-xs">
+            By joining, you agree to be seen and heard in this meeting.
+          </p>
         </form>
       </div>
     </div>

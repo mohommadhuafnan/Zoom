@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Info, Shield, Grid3X3, Minimize2, Maximize2, X } from 'lucide-react';
-import { getSocket } from '../services/socket';
+import { getSocket, connectSocket, connectSocketAsGuest } from '../services/socket';
 import { useAuth } from '../context/AuthContext';
+import { getGuestSession, getMeetingDisplayName } from '../utils/guestSession';
 import { useLocalMedia } from '../hooks/useLocalMedia';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { useRecording } from '../hooks/useRecording';
@@ -16,7 +17,13 @@ import ReactionsMenu from '../components/meeting/ReactionsMenu';
 export default function MeetingRoom() {
   const { code } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+
+  const displayName = useMemo(
+    () => location.state?.displayName || getMeetingDisplayName(user),
+    [location.state?.displayName, user]
+  );
 
   const [meeting, setMeeting] = useState(null);
   const [isHost, setIsHost] = useState(false);
@@ -64,10 +71,28 @@ export default function MeetingRoom() {
   }, [joined, broadcastMediaState]);
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    const guest = getGuestSession();
+    if (!token && !guest) {
+      navigate(`/join/${code}`, { replace: true });
+    }
+  }, [code, navigate]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function init() {
       try {
+        const token = localStorage.getItem('token');
+        const guest = getGuestSession();
+        if (!token && !guest) return;
+
+        if (token) {
+          connectSocket(token);
+        } else if (guest) {
+          connectSocketAsGuest(guest.displayName, guest.guestId);
+        }
+
         await startMedia();
         const socket = getSocket();
         if (!socket) throw new Error('Not connected to server');
@@ -223,7 +248,7 @@ export default function MeetingRoom() {
     }
   };
 
-  const meetingTitle = meeting?.title || `${user?.displayName}'s Meeting`;
+  const meetingTitle = meeting?.title || `${displayName}'s Meeting`;
 
   if (waiting) {
     return (
@@ -286,7 +311,7 @@ export default function MeetingRoom() {
           <div className={`grid ${gridClass} gap-3 h-full content-center`}>
             <VideoTile
               stream={localStream}
-              name={user?.displayName}
+              name={displayName}
               isLocal
               muted
               videoOff={videoOff}
@@ -338,7 +363,7 @@ export default function MeetingRoom() {
           <ParticipantsPanel
             participants={participants.length ? participants : [{
               socketId: mySocketId,
-              displayName: user?.displayName,
+              displayName,
               isHost,
               audioMuted,
               videoOff,
