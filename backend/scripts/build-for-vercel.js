@@ -9,12 +9,42 @@ const repoRoot = path.join(backendDir, '..');
 const frontendDir = path.join(repoRoot, 'frontend');
 const publicDir = path.join(backendDir, 'public');
 const distDir = path.join(frontendDir, 'dist');
+const rootVercelPath = path.join(repoRoot, 'vercel.json');
 
-console.log('Building frontend for Vercel...');
+function isMonorepoDeploy() {
+  if (!fs.existsSync(rootVercelPath)) return false;
+  try {
+    const config = JSON.parse(fs.readFileSync(rootVercelPath, 'utf8'));
+    return config.builds?.some((b) => String(b.src).includes('frontend/package.json'));
+  } catch {
+    return false;
+  }
+}
+
+function copyDistToPublic() {
+  if (fs.existsSync(publicDir)) {
+    fs.rmSync(publicDir, { recursive: true, force: true });
+  }
+  fs.cpSync(distDir, publicDir, { recursive: true });
+  console.log('Frontend copied to backend/public');
+}
+
+// Root vercel.json builds frontend separately — skip public folder
+if (isMonorepoDeploy()) {
+  console.log('Monorepo deploy detected — skipping backend/public build');
+  process.exit(0);
+}
+
+console.log('Standalone backend deploy — building frontend into public/...');
 
 if (!fs.existsSync(path.join(frontendDir, 'package.json'))) {
-  console.error('frontend/ not found — ensure repo root is correct');
+  console.error('frontend/ not found. Set Vercel Root Directory to repository root (.)');
   process.exit(1);
+}
+
+if (fs.existsSync(distDir)) {
+  copyDistToPublic();
+  process.exit(0);
 }
 
 execSync('npm install', { cwd: frontendDir, stdio: 'inherit' });
@@ -25,9 +55,4 @@ if (!fs.existsSync(distDir)) {
   process.exit(1);
 }
 
-if (fs.existsSync(publicDir)) {
-  fs.rmSync(publicDir, { recursive: true, force: true });
-}
-
-fs.cpSync(distDir, publicDir, { recursive: true });
-console.log('Frontend copied to backend/public');
+copyDistToPublic();
