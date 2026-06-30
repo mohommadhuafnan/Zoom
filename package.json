@@ -1,0 +1,8 @@
+{
+  "name": "unimeet",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --prefix frontend",
+    "vercel-build": "npm run vercel-build --prefix frontend && npm run vercel-build --prefix backend"
+  }
+}

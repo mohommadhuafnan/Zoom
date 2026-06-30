@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "vercel-build": "echo \"Vercel uses index.js handler\"",
+    "vercel-build": "node scripts/build-for-vercel.js",
     "build": "echo \"Express backend — no build step\""
   },
   "dependencies": {

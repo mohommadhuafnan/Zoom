@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "public" }
+    },
+    {
+      "src": "index.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/index.js" },
+    { "src": "/socket.io/(.*)", "dest": "/index.js" },
+    { "handle": "filesystem" },
+    { "src": "/assets/(.*)", "dest": "/public/assets/$1" },
+    { "src": "/vite.svg", "dest": "/public/vite.svg" },
+    { "src": "/(.*)", "dest": "/public/index.html" }
+  ]
+}
