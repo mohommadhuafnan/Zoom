@@ -30,14 +30,30 @@ model Meeting {
   host         User      @relation("HostMeetings", fields: [hostId], references: [id])
   waitingRoom  Boolean   @default(false) @map("waiting_room")
   isActive     Boolean   @default(true) @map("is_active")
-  startedAt    DateTime  @default(now()) @map("started_at")
+  scheduledAt  DateTime? @map("scheduled_at")
+  durationMinutes Int    @default(60) @map("duration_minutes")
+  description  String?
+  timezone     String    @default("UTC")
+  startedAt    DateTime? @map("started_at")
   endedAt      DateTime? @map("ended_at")
   createdAt    DateTime  @default(now()) @map("created_at")
 
   participations MeetingParticipation[]
   chatMessages   ChatMessage[]
+  invites        MeetingInvite[]
 
   @@map("meetings")
+}
+
+model MeetingInvite {
+  id        String   @id @default(uuid())
+  meetingId String   @map("meeting_id")
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  email     String
+  invitedAt DateTime @default(now()) @map("invited_at")
+
+  @@unique([meetingId, email])
+  @@map("meeting_invites")
 }
 
 model MeetingParticipation {

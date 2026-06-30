@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? '/api' : 'http://localhost:5000/api');
 
 function getToken() {
   return localStorage.getItem('token');
@@ -37,6 +39,17 @@ export const api = {
 
   createMeeting: (body) =>
     request('/meetings', { method: 'POST', body: JSON.stringify(body) }),
+
+  scheduleMeeting: (body) =>
+    request('/meetings/schedule', { method: 'POST', body: JSON.stringify(body) }),
+
+  getScheduledMeetings: (days = 30) =>
+    request(`/meetings/scheduled?days=${days}`),
+
+  cancelScheduledMeeting: (id) =>
+    request(`/meetings/scheduled/${id}`, { method: 'DELETE' }),
+
+  getMeetingInvite: (id) => request(`/meetings/${id}/invite`),
 
   getMeeting: (code) => request(`/meetings/${code}`),
 

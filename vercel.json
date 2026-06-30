@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "builds": [
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    },
+    {
+      "src": "backend/index.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "backend/index.js" },
+    { "src": "/socket.io/(.*)", "dest": "backend/index.js" },
+    { "handle": "filesystem" },
+    { "src": "/assets/(.*)", "dest": "frontend/dist/assets/$1" },
+    { "src": "/(.*)", "dest": "frontend/dist/index.html" }
+  ]
+}

@@ -1,13 +1,10 @@
-import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import cors from 'cors';
-import { env } from './config/env.js';
-import authRoutes from './routes/auth.js';
-import meetingRoutes from './routes/meetings.js';
+import { createApp } from './app.js';
 import { setupSocket } from './socket/index.js';
+import { env } from './config/env.js';
 
-const app = express();
+const app = createApp();
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
@@ -17,16 +14,6 @@ const io = new Server(httpServer, {
     credentials: true,
   },
 });
-
-app.use(cors({ origin: env.clientUrl, credentials: true }));
-app.use(express.json());
-
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-app.use('/api/auth', authRoutes);
-app.use('/api/meetings', meetingRoutes);
 
 setupSocket(io);
 

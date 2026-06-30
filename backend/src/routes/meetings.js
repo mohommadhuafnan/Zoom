@@ -5,6 +5,10 @@ import {
   getMeetingByCode,
   endMeeting,
   getUserMeetingHistory,
+  scheduleMeeting,
+  getScheduledMeetings,
+  getMeetingInviteDetails,
+  cancelScheduledMeeting,
 } from '../services/meetingService.js';
 import { env } from '../config/env.js';
 
@@ -27,12 +31,84 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
+router.post('/schedule', authMiddleware, async (req, res) => {
+  try {
+    const {
+      title,
+      scheduledAt,
+      durationMinutes,
+      waitingRoom,
+      description,
+      timezone,
+      inviteEmails,
+    } = req.body;
+
+    const result = await scheduleMeeting({
+      hostId: req.user.userId,
+      title,
+      scheduledAt,
+      durationMinutes,
+      waitingRoom: !!waitingRoom,
+      description,
+      timezone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      inviteEmails: Array.isArray(inviteEmails) ? inviteEmails : [],
+    });
+
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.get('/scheduled', authMiddleware, async (req, res) => {
+  try {
+    const meetings = await getScheduledMeetings(req.user.userId, {
+      days: parseInt(req.query.days || '30', 10),
+    });
+    res.json({ meetings });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 router.get('/history', authMiddleware, async (req, res) => {
   try {
     const history = await getUserMeetingHistory(req.user.userId);
     res.json(history);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id/invite', authMiddleware, async (req, res) => {
+  try {
+    const details = await getMeetingInviteDetails(req.params.id, req.user.userId);
+    res.json(details);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.get('/:id/invite.ics', authMiddleware, async (req, res) => {
+  try {
+    const { ics, meeting } = await getMeetingInviteDetails(req.params.id, req.user.userId);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="unimeet-${meeting.meetingCode}.ics"`
+    );
+    res.send(ics);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.delete('/scheduled/:id', authMiddleware, async (req, res) => {
+  try {
+    const meeting = await cancelScheduledMeeting(req.params.id, req.user.userId);
+    res.json({ meeting });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 

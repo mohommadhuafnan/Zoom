@@ -39,18 +39,38 @@ Zoom/
 ## Prerequisites
 
 - Node.js 18+
-- PostgreSQL 14+ (local or Docker)
+- [Supabase](https://supabase.com) project (PostgreSQL + optional Auth/Storage)
+
+## Supabase setup
+
+1. **Copy env files**
+   ```bash
+   cp backend/.env.example backend/.env
+   cp frontend/.env.example frontend/.env
+   ```
+
+2. **Set `DATABASE_URL` in `backend/.env`**
+   - Open [Supabase Dashboard](https://supabase.com/dashboard) → your project → **Settings → Database**
+   - Copy the **Session pooler** connection string (IPv4-friendly)
+   - Replace `[YOUR-PASSWORD]` with your DB password (`@` must be encoded as `%40`)
+   - Example:
+     ```
+     postgresql://postgres.gwnbndrcpjbskzzozgcc:YOUR_PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require
+     ```
+
+3. **Create tables** — choose one:
+   - **Option A (recommended if local migrate fails):** Supabase → **SQL Editor** → paste and run `backend/prisma/supabase-init.sql`
+   - **Option B:** `cd backend && npx prisma migrate dev --name init`
+
+4. **Add Supabase keys** to `backend/.env` and `frontend/.env` (from Settings → API)
+
+5. **Restart backend** after changing `.env`
 
 ## Quick Start
 
 ### 1. Database
 
-```bash
-# Create database (psql or pgAdmin)
-CREATE DATABASE unimeet;
-```
-
-### 2. Backend
+See **Supabase setup** above.
 
 ```bash
 cd backend

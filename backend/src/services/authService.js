@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs';
-import prisma from '../config/db.js';
+import { v4 as uuidv4 } from 'uuid';
+import { getSupabase, throwIfError } from '../config/supabase.js';
 import { signToken } from '../middleware/auth.js';
+import { mapUser, userToDb } from '../utils/dbMappers.js';
 
 const SALT_ROUNDS = 12;
 
@@ -10,7 +12,14 @@ function sanitizeUser(user) {
 }
 
 export async function registerUser({ email, password, displayName }) {
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const { data: existing, error: findError } = await getSupabase()
+    .from('users')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle();
+
+  throwIfError(findError, 'Failed to check email');
+
   if (existing) {
     const err = new Error('Email already registered');
     err.status = 409;
@@ -18,16 +27,35 @@ export async function registerUser({ email, password, displayName }) {
   }
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-  const user = await prisma.user.create({
-    data: { email, passwordHash, displayName },
-  });
+  const now = new Date().toISOString();
 
+  const { data: row, error } = await getSupabase()
+    .from('users')
+    .insert({
+      id: uuidv4(),
+      ...userToDb({ email, passwordHash, displayName }),
+      updated_at: now,
+    })
+    .select()
+    .single();
+
+  throwIfError(error, 'Failed to create user');
+
+  const user = mapUser(row);
   const token = signToken({ userId: user.id, email: user.email });
   return { user: sanitizeUser(user), token };
 }
 
 export async function loginUser({ email, password }) {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const { data: row, error } = await getSupabase()
+    .from('users')
+    .select('*')
+    .eq('email', email)
+    .maybeSingle();
+
+  throwIfError(error, 'Failed to look up user');
+
+  const user = mapUser(row);
   if (!user) {
     const err = new Error('Invalid email or password');
     err.status = 401;
@@ -46,18 +74,27 @@ export async function loginUser({ email, password }) {
 }
 
 export async function getUserById(userId) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) return null;
-  return sanitizeUser(user);
+  const { data: row, error } = await getSupabase()
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle();
+
+  throwIfError(error, 'Failed to fetch user');
+  return sanitizeUser(mapUser(row));
 }
 
 export async function updateUserProfile(userId, { displayName, avatarUrl }) {
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: {
-      ...(displayName !== undefined && { displayName }),
-      ...(avatarUrl !== undefined && { avatarUrl }),
-    },
-  });
-  return sanitizeUser(user);
+  const { data: row, error } = await getSupabase()
+    .from('users')
+    .update({
+      ...userToDb({ displayName, avatarUrl }),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId)
+    .select()
+    .single();
+
+  throwIfError(error, 'Failed to update profile');
+  return sanitizeUser(mapUser(row));
 }

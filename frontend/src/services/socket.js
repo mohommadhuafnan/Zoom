@@ -1,6 +1,10 @@
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+function getSocketUrl() {
+  if (import.meta.env.VITE_SOCKET_URL) return import.meta.env.VITE_SOCKET_URL;
+  if (import.meta.env.PROD && typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:5000';
+}
 
 let socket = null;
 
@@ -11,7 +15,7 @@ export function getSocket() {
 export function connectSocket(token) {
   if (socket?.connected) return socket;
 
-  socket = io(SOCKET_URL, {
+  socket = io(getSocketUrl(), {
     auth: { token },
     transports: ['websocket', 'polling'],
   });
