@@ -64,7 +64,7 @@ export default function MeetingRoom() {
     stopAll,
   } = useLocalMedia();
 
-  const { remoteStreams, connectToExistingPeers, cleanup, removePeer, handleSignal } =
+  const { remoteStreams, connectToExistingPeers, ensurePeerConnections, cleanup, removePeer, handleSignal } =
     useWebRTC({
       localStream,
       enabled: phase === 'joined',
@@ -158,6 +158,12 @@ export default function MeetingRoom() {
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
+  useEffect(() => {
+    if (phase !== 'joined' || !signalingApi || !myPeerId) return;
+    const peerIds = participants.map((p) => p.peerId || p.socketId).filter(Boolean);
+    ensurePeersRef.current(peerIds, signalingApi, localStream);
+  }, [phase, participants, myPeerId, signalingApi, localStream]);
+
   const broadcastMediaState = useCallback(() => {
     signalingRef.current?.updateMediaState({ audioMuted, videoOff, screenSharing });
   }, [audioMuted, videoOff, screenSharing]);
@@ -168,9 +174,11 @@ export default function MeetingRoom() {
 
   const handleSignalRef = useRef(handleSignal);
   const connectPeersRef = useRef(connectToExistingPeers);
+  const ensurePeersRef = useRef(ensurePeerConnections);
   const removePeerRef = useRef(removePeer);
   handleSignalRef.current = handleSignal;
   connectPeersRef.current = connectToExistingPeers;
+  ensurePeersRef.current = ensurePeerConnections;
   removePeerRef.current = removePeer;
 
   const finishMeeting = useCallback(
@@ -191,7 +199,7 @@ export default function MeetingRoom() {
     setError('');
 
     try {
-      await startMedia({ audio: !audioMuted, video: !videoOff });
+      const mediaStream = await startMedia({ audio: !audioMuted, video: !videoOff });
 
       const guest = getGuestSession();
       const token = localStorage.getItem('token');
@@ -214,6 +222,12 @@ export default function MeetingRoom() {
         guestId: guest?.guestId || peerId,
         handlers: {
           onParticipants: (list) => setParticipants(list),
+          onPeerJoined: (peer) => {
+            const peerId = peer.peerId || peer.socketId;
+            if (peerId && signalingRef.current) {
+              ensurePeersRef.current([peerId], signalingRef.current);
+            }
+          },
           onExistingPeers: (peers) => connectPeersRef.current(peers),
           onPeerLeft: ({ peerId: leftId }) => {
             setParticipants((prev) =>
@@ -252,7 +266,7 @@ export default function MeetingRoom() {
       setIsHost(!!conn.isHost);
 
       if (!conn.waiting && conn.existingPeers?.length) {
-        connectPeersRef.current(conn.existingPeers, conn);
+        connectPeersRef.current(conn.existingPeers, conn, mediaStream);
       }
 
       if (!conn.waiting) {
@@ -443,7 +457,10 @@ export default function MeetingRoom() {
   const renderParticipantTile = (p, { compact = false, forceAvatar = false } = {}) => {
     const peerId = p.peerId || p.socketId;
     const isLocal = peerId === myPeerId;
-    const stream = isLocal ? localStream : remoteStreams.get(peerId);
+    let stream = isLocal ? localStream : remoteStreams.get(peerId);
+    if (!isLocal && !stream) {
+      stream = remoteStreams.get(p.socketId) || remoteStreams.get(p.peerId);
+    }
     const showVideoOff = forceAvatar || (p.videoOff && !streamHasActiveVideo(stream));
     return (
       <div key={peerId} className={compact ? 'w-44 shrink-0 h-full' : 'min-h-0 h-full'}>
