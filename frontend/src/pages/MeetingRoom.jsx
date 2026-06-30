@@ -17,6 +17,7 @@ import ReactionsMenu from '../components/meeting/ReactionsMenu';
 import PreJoinLobby from '../components/meeting/PreJoinLobby';
 import WaitingForHostScreen from '../components/meeting/WaitingForHostScreen';
 import ParticipantPiP from '../components/meeting/ParticipantPiP';
+import MeetingThankYouScreen from '../components/meeting/MeetingThankYouScreen';
 import { streamIsScreenShare, mergeSelfParticipant, streamHasActiveVideo } from '../utils/mediaUtils';
 
 export default function MeetingRoom() {
@@ -43,6 +44,7 @@ export default function MeetingRoom() {
   const [showEndDialog, setShowEndDialog] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [endedByHost, setEndedByHost] = useState(false);
 
   const signalingRef = useRef(null);
   const [signalingApi, setSignalingApi] = useState(null);
@@ -51,6 +53,7 @@ export default function MeetingRoom() {
 
   const {
     localStream,
+    cameraStream,
     audioMuted,
     videoOff,
     screenSharing,
@@ -170,6 +173,19 @@ export default function MeetingRoom() {
   connectPeersRef.current = connectToExistingPeers;
   removePeerRef.current = removePeer;
 
+  const finishMeeting = useCallback(
+    (hostEnded = false) => {
+      cleanup();
+      stopAll();
+      signalingRef.current?.leave();
+      signalingRef.current = null;
+      setSignalingApi(null);
+      setEndedByHost(hostEnded);
+      setPhase('ended');
+    },
+    [cleanup, stopAll]
+  );
+
   const enterMeeting = async () => {
     setJoining(true);
     setError('');
@@ -206,7 +222,13 @@ export default function MeetingRoom() {
             removePeerRef.current(leftId);
           },
           onSignal: (p) => handleSignalRef.current(p),
-          onChat: (msg) => setMessages((prev) => [...prev, msg]),
+          onChat: (msg) => {
+            setMessages((prev) => {
+              const id = msg.id || `${msg.senderId}-${msg.createdAt}`;
+              if (prev.some((m) => (m.id || `${m.senderId}-${m.createdAt}`) === id)) return prev;
+              return [...prev, { ...msg, id: msg.id || id }];
+            });
+          },
           onWaiting: (m) => {
             setMeeting(m);
             setPhase('waiting');
@@ -216,14 +238,10 @@ export default function MeetingRoom() {
             alert('The host denied your request to join');
             navigate('/');
           },
-          onMeetingEnded: () => {
-            alert('The meeting has ended');
-            navigate('/');
-          },
+          onMeetingEnded: () => finishMeeting(true),
           onForceMute: () => toggleAudio(),
           onRemoved: () => {
-            alert('You were removed from the meeting');
-            navigate('/');
+            finishMeeting(true);
           },
         },
       });
@@ -263,15 +281,19 @@ export default function MeetingRoom() {
   };
 
   const handleLeave = () => {
-    cleanup();
-    stopAll();
-    signalingRef.current?.leave();
-    navigate('/');
+    finishMeeting(false);
   };
 
-  const handleEndMeeting = () => {
+  const handleEndMeeting = async () => {
+    try {
+      if (isHost && meeting?.id) {
+        await api.endMeeting(meeting.id);
+      }
+    } catch {
+      /* still notify participants */
+    }
     signalingRef.current?.endMeeting();
-    handleLeave();
+    finishMeeting(true);
   };
 
   const toggleFullscreen = () => {
@@ -373,6 +395,16 @@ export default function MeetingRoom() {
     );
   }
 
+  if (phase === 'ended') {
+    return (
+      <MeetingThankYouScreen
+        meetingTitle={meetingTitle}
+        displayName={displayName}
+        hostEnded={endedByHost}
+      />
+    );
+  }
+
   if (phase === 'waiting') {
     return (
       <div className="min-h-screen bg-zoom-dark flex items-center justify-center text-white">
@@ -398,14 +430,15 @@ export default function MeetingRoom() {
     );
   }
 
-  const remoteEntries = Array.from(remoteStreams.entries());
-  const totalTiles = 1 + remoteEntries.length;
+  const tileCount = allParticipants.length || 1;
   const gridClass =
-    totalTiles <= 1
+    tileCount === 1
       ? 'grid-cols-1 h-full'
-      : totalTiles <= 4
-        ? 'grid-cols-2'
-        : 'grid-cols-3';
+      : tileCount === 2
+        ? 'grid-cols-1 sm:grid-cols-2 h-full'
+        : tileCount <= 4
+          ? 'grid-cols-2 h-full'
+          : 'grid-cols-2 lg:grid-cols-3 h-full';
 
   const renderParticipantTile = (p, { compact = false, forceAvatar = false } = {}) => {
     const peerId = p.peerId || p.socketId;
@@ -424,27 +457,6 @@ export default function MeetingRoom() {
         />
       </div>
     );
-  };
-
-  const spotlightRemote =
-    !activeScreenShare && remoteEntries.length === 1
-      ? (() => {
-          const [peerId, stream] = remoteEntries[0];
-          const p = allParticipants.find((x) => (x.peerId || x.socketId) === peerId);
-          return {
-            peerId,
-            stream,
-            name: p?.displayName || 'Participant',
-            videoOff: p?.videoOff,
-          };
-        })()
-      : null;
-
-  const selfParticipant = {
-    peerId: myPeerId,
-    socketId: myPeerId,
-    displayName,
-    videoOff,
   };
 
   return (
@@ -478,7 +490,7 @@ export default function MeetingRoom() {
           className="flex-1 p-2 sm:p-4 overflow-hidden bg-black min-h-0"
         >
           {activeScreenShare ? (
-            <div className="relative h-full w-full min-h-0">
+            <div className="relative h-full w-full min-h-0 bg-black">
               <VideoTile
                 stream={activeScreenShare.stream}
                 name={`${activeScreenShare.name} is sharing`}
@@ -492,26 +504,14 @@ export default function MeetingRoom() {
                 myPeerId={myPeerId}
                 displayName={displayName}
                 localStream={localStream}
+                cameraStream={cameraStream}
+                screenSharing={screenSharing}
                 remoteStreams={remoteStreams}
                 hidePeerId={activeScreenShare.peerId}
               />
             </div>
-          ) : spotlightRemote ? (
-            <div className="flex flex-col h-full w-full gap-2 min-h-0">
-              <div className="flex-1 min-h-0">
-                <VideoTile
-                  stream={spotlightRemote.stream}
-                  name={spotlightRemote.name}
-                  videoOff={spotlightRemote.videoOff && !streamHasActiveVideo(spotlightRemote.stream)}
-                  fill
-                />
-              </div>
-              <div className="flex gap-2 h-28 sm:h-32 shrink-0 overflow-x-auto pb-1">
-                {renderParticipantTile(selfParticipant, { compact: true })}
-              </div>
-            </div>
           ) : (
-            <div className={`grid ${gridClass} gap-2 sm:gap-3 h-full w-full`}>
+            <div className={`grid ${gridClass} gap-2 sm:gap-3 w-full`}>
               {allParticipants.map((p) => renderParticipantTile(p))}
             </div>
           )}

@@ -12,19 +12,35 @@ export default function VideoTile({
   className = '',
 }) {
   const videoRef = useRef(null);
+  const audioRef = useRef(null);
   const sharingScreen = isScreenShare || streamIsScreenShare(stream);
   const hasActiveVideo = streamHasActiveVideo(stream);
+  const hasActiveAudio = stream?.getAudioTracks().some((t) => t.enabled && t.readyState === 'live');
   const showPlaceholder = !hasActiveVideo || (!sharingScreen && videoOff);
 
   useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    if (stream && !showPlaceholder) {
-      el.srcObject = stream;
-    } else {
-      el.srcObject = null;
+    const videoEl = videoRef.current;
+    const audioEl = audioRef.current;
+    if (!stream) {
+      if (videoEl) videoEl.srcObject = null;
+      if (audioEl) audioEl.srcObject = null;
+      return;
     }
-  }, [stream, showPlaceholder]);
+
+    if (!showPlaceholder && videoEl) {
+      videoEl.srcObject = stream;
+      videoEl.play().catch(() => {});
+    } else if (videoEl) {
+      videoEl.srcObject = null;
+    }
+
+    if (!isLocal && hasActiveAudio && audioEl) {
+      audioEl.srcObject = stream;
+      audioEl.play().catch(() => {});
+    } else if (audioEl) {
+      audioEl.srcObject = null;
+    }
+  }, [stream, showPlaceholder, isLocal, hasActiveAudio]);
 
   return (
     <div
@@ -32,6 +48,9 @@ export default function VideoTile({
         fill ? 'h-full min-h-0 rounded-lg' : 'rounded-xl aspect-video min-h-[180px]'
       }`}
     >
+      {!isLocal && hasActiveAudio && (
+        <audio ref={audioRef} autoPlay playsInline className="hidden" />
+      )}
       {!showPlaceholder ? (
         <video
           ref={videoRef}
@@ -43,8 +62,8 @@ export default function VideoTile({
           } ${isLocal && !sharingScreen ? 'scale-x-[-1]' : ''}`}
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center bg-zinc-800">
-          <div className="w-20 h-20 rounded-full bg-zinc-600 flex items-center justify-center text-2xl font-semibold text-white">
+        <div className="w-full h-full flex items-center justify-center bg-zinc-800/80">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-zinc-600 flex items-center justify-center text-xl sm:text-2xl font-semibold text-white">
             {name?.charAt(0)?.toUpperCase() || '?'}
           </div>
         </div>
@@ -54,7 +73,7 @@ export default function VideoTile({
           Screen share
         </div>
       )}
-      <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md max-w-[90%] truncate">
+      <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] sm:text-xs px-1.5 py-0.5 rounded max-w-[90%] truncate">
         {name}
         {isLocal ? ' (me)' : ''}
       </div>

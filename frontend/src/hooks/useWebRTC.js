@@ -34,7 +34,7 @@ export function useWebRTC({ localStream, enabled, signaling, myPeerId }) {
     const sig = getSignaling();
     if (!sig) return;
     try {
-      const offer = await pc.createOffer({ iceRestart: false });
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
       await pc.setLocalDescription(offer);
       sig.sendSignal('offer', { to: peerId, offer: pc.localDescription });
     } catch (err) {
@@ -150,7 +150,7 @@ export function useWebRTC({ localStream, enabled, signaling, myPeerId }) {
       };
 
       if (isInitiator && sig) {
-        pc.createOffer()
+        pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true })
           .then((offer) => pc.setLocalDescription(offer))
           .then(() => {
             sig.sendSignal('offer', {

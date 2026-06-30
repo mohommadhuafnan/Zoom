@@ -119,6 +119,7 @@ router.get('/join/:code', async (req, res) => {
     if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
       res.json({
       meeting: {
+        id: meeting.id,
         meetingCode: meeting.meetingCode,
         title: meeting.title,
         isActive: meeting.isActive,

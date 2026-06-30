@@ -20,8 +20,19 @@ export function useLocalMedia() {
   const [audioMuted, setAudioMuted] = useState(true);
   const [videoOff, setVideoOff] = useState(true);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
   const cameraStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
+
+  const refreshCameraStream = useCallback(() => {
+    const cam = cameraStreamRef.current;
+    if (!cam) {
+      setCameraStream(null);
+      return;
+    }
+    const tracks = cam.getTracks().filter((t) => t.readyState === 'live');
+    setCameraStream(tracks.length ? new MediaStream(tracks) : null);
+  }, []);
 
   const applyStream = useCallback((stream) => {
     cameraStreamRef.current = stream;
@@ -32,7 +43,8 @@ export function useLocalMedia() {
       setAudioMuted(!at || !at.enabled);
       setVideoOff(!vt || !vt.enabled);
     }
-  }, []);
+    refreshCameraStream();
+  }, [refreshCameraStream]);
 
   const startMedia = useCallback(
     async ({ audio = true, video = true } = {}) => {
@@ -55,6 +67,7 @@ export function useLocalMedia() {
         applyStream(stream);
         setAudioMuted(!audio);
         setVideoOff(!video);
+        refreshCameraStream();
         return stream;
       } catch (err) {
         console.error('Failed to get user media:', err);
@@ -96,6 +109,7 @@ export function useLocalMedia() {
           applyStream(new MediaStream([track]));
         }
         setAudioMuted(false);
+        refreshCameraStream();
         return false;
       } catch {
         return true;
@@ -104,8 +118,10 @@ export function useLocalMedia() {
     const track = stream.getAudioTracks()[0];
     track.enabled = !track.enabled;
     setAudioMuted(!track.enabled);
+    setLocalStream(new MediaStream(stream.getTracks()));
+    refreshCameraStream();
     return !track.enabled;
-  }, [localStream, applyStream]);
+  }, [localStream, applyStream, refreshCameraStream]);
 
   const toggleVideo = useCallback(async () => {
     let stream = localStream || cameraStreamRef.current;
@@ -115,6 +131,7 @@ export function useLocalMedia() {
       track.enabled = !track.enabled;
       setVideoOff(!track.enabled);
       setLocalStream(new MediaStream(stream.getTracks()));
+      refreshCameraStream();
       return !track.enabled;
     }
 
@@ -133,12 +150,13 @@ export function useLocalMedia() {
         applyStream(newStream);
       }
       setVideoOff(false);
+      refreshCameraStream();
       return false;
     } catch (err) {
       console.error('Camera failed:', err);
       return true;
     }
-  }, [localStream, applyStream]);
+  }, [localStream, applyStream, refreshCameraStream]);
 
   const startScreenShare = useCallback(async () => {
     try {
@@ -192,7 +210,8 @@ export function useLocalMedia() {
       setVideoOff(true);
     }
     setScreenSharing(false);
-  }, []);
+    refreshCameraStream();
+  }, [refreshCameraStream]);
 
   const toggleScreenShare = useCallback(async () => {
     if (screenSharing) {
@@ -209,12 +228,14 @@ export function useLocalMedia() {
     cameraStreamRef.current = null;
     screenStreamRef.current = null;
     setLocalStream(null);
+    setCameraStream(null);
   }, []);
 
   useEffect(() => () => stopAll(), [stopAll]);
 
   return {
     localStream,
+    cameraStream,
     audioMuted,
     videoOff,
     screenSharing,
