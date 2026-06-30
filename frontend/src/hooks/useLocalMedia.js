@@ -1,5 +1,20 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
+const AUDIO_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  sampleRate: 48000,
+  channelCount: 1,
+};
+
+const VIDEO_CONSTRAINTS = {
+  width: { ideal: 1280, max: 1920 },
+  height: { ideal: 720, max: 1080 },
+  frameRate: { ideal: 30, max: 30 },
+  facingMode: 'user',
+};
+
 export function useLocalMedia() {
   const [localStream, setLocalStream] = useState(null);
   const [audioMuted, setAudioMuted] = useState(true);
@@ -27,7 +42,10 @@ export function useLocalMedia() {
         return null;
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio, video });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: audio ? AUDIO_CONSTRAINTS : false,
+          video: video ? VIDEO_CONSTRAINTS : false,
+        });
         stream.getAudioTracks().forEach((t) => {
           t.enabled = audio;
         });
@@ -42,7 +60,10 @@ export function useLocalMedia() {
         console.error('Failed to get user media:', err);
         if (video && audio) {
           try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            const stream = await navigator.mediaDevices.getUserMedia({
+              audio: AUDIO_CONSTRAINTS,
+              video: false,
+            });
             applyStream(stream);
             setVideoOff(true);
             setAudioMuted(false);
@@ -63,7 +84,10 @@ export function useLocalMedia() {
     let stream = localStream || cameraStreamRef.current;
     if (!stream?.getAudioTracks().length) {
       try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: AUDIO_CONSTRAINTS,
+          video: false,
+        });
         const track = audioStream.getAudioTracks()[0];
         if (stream) {
           stream.addTrack(track);
@@ -95,7 +119,10 @@ export function useLocalMedia() {
     }
 
     try {
-      const videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const videoStream = await navigator.mediaDevices.getUserMedia({
+        video: VIDEO_CONSTRAINTS,
+        audio: false,
+      });
       const newTrack = videoStream.getVideoTracks()[0];
       if (stream) {
         stream.addTrack(newTrack);
@@ -116,8 +143,14 @@ export function useLocalMedia() {
   const startScreenShare = useCallback(async () => {
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always' },
-        audio: false,
+        video: {
+          cursor: 'always',
+          displaySurface: 'monitor',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
+        },
+        audio: true,
       });
       screenStreamRef.current = screenStream;
 
@@ -125,10 +158,15 @@ export function useLocalMedia() {
       screenTrack.onended = () => stopScreenShare();
 
       const base = cameraStreamRef.current || localStream;
-      const newStream = new MediaStream([
+      const audioTracks = [
         ...(base?.getAudioTracks() || []),
-        screenTrack,
-      ]);
+        ...screenStream.getAudioTracks(),
+      ];
+      const uniqueAudio = audioTracks.filter(
+        (t, i, arr) => arr.findIndex((x) => x.id === t.id) === i
+      );
+
+      const newStream = new MediaStream([...uniqueAudio, screenTrack]);
       setLocalStream(newStream);
       setScreenSharing(true);
       setVideoOff(false);

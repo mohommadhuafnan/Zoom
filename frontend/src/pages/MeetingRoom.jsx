@@ -16,6 +16,7 @@ import HostToolsPanel from '../components/meeting/HostToolsPanel';
 import ReactionsMenu from '../components/meeting/ReactionsMenu';
 import PreJoinLobby from '../components/meeting/PreJoinLobby';
 import WaitingForHostScreen from '../components/meeting/WaitingForHostScreen';
+import ParticipantPiP from '../components/meeting/ParticipantPiP';
 import { streamIsScreenShare, mergeSelfParticipant, streamHasActiveVideo } from '../utils/mediaUtils';
 
 export default function MeetingRoom() {
@@ -65,6 +66,7 @@ export default function MeetingRoom() {
       localStream,
       enabled: phase === 'joined',
       signaling: signalingApi,
+      myPeerId,
     });
 
   const { isRecording, startRecording, stopRecording } = useRecording(localStream, remoteStreams);
@@ -230,6 +232,10 @@ export default function MeetingRoom() {
       setSignalingApi(conn);
       setMyPeerId(conn.peerId);
       setIsHost(!!conn.isHost);
+
+      if (!conn.waiting && conn.existingPeers?.length) {
+        connectPeersRef.current(conn.existingPeers, conn);
+      }
 
       if (!conn.waiting) {
         setPhase('joined');
@@ -472,25 +478,23 @@ export default function MeetingRoom() {
           className="flex-1 p-2 sm:p-4 overflow-hidden bg-black min-h-0"
         >
           {activeScreenShare ? (
-            <div className="flex flex-col h-full w-full gap-2 min-h-0">
-              <div className="flex-1 min-h-0 relative">
-                <VideoTile
-                  stream={activeScreenShare.stream}
-                  name={`${activeScreenShare.name} is sharing`}
-                  isLocal={activeScreenShare.isLocal}
-                  muted={activeScreenShare.isLocal}
-                  isScreenShare
-                  fill
-                />
-              </div>
-              <div className="flex gap-2 h-28 sm:h-32 shrink-0 overflow-x-auto pb-1">
-                {allParticipants.map((p) =>
-                  renderParticipantTile(p, {
-                    compact: true,
-                    forceAvatar: (p.peerId || p.socketId) === activeScreenShare.peerId,
-                  })
-                )}
-              </div>
+            <div className="relative h-full w-full min-h-0">
+              <VideoTile
+                stream={activeScreenShare.stream}
+                name={`${activeScreenShare.name} is sharing`}
+                isLocal={activeScreenShare.isLocal}
+                muted={activeScreenShare.isLocal}
+                isScreenShare
+                fill
+              />
+              <ParticipantPiP
+                participants={allParticipants}
+                myPeerId={myPeerId}
+                displayName={displayName}
+                localStream={localStream}
+                remoteStreams={remoteStreams}
+                hidePeerId={activeScreenShare.peerId}
+              />
             </div>
           ) : spotlightRemote ? (
             <div className="flex flex-col h-full w-full gap-2 min-h-0">

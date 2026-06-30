@@ -92,8 +92,8 @@ export function setupSocket(io) {
           return callback?.({ waiting: true, meeting });
         }
 
-        await joinRoom(socket, io, meeting, isHost);
-        callback?.({ success: true, meeting, isHost });
+        const existingPeers = await joinRoom(socket, io, meeting, isHost);
+        callback?.({ success: true, meeting, isHost, existingPeers });
       } catch (err) {
         callback?.({ error: err.message });
       }
@@ -247,4 +247,5 @@ async function joinRoom(socket, io, meeting, isHost) {
   socket.emit('room:joined', { participants: Array.from(room.values()), existingPeers });
   socket.to(roomCode).emit('peer:joined', state);
   broadcastParticipants(io, roomCode);
+  return existingPeers;
 }

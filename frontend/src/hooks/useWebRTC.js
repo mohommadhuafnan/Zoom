@@ -1,17 +1,13 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
+import { getIceServers } from '../config/iceServers.js';
 
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ],
-};
-
-export function useWebRTC({ localStream, enabled, signaling }) {
+export function useWebRTC({ localStream, enabled, signaling, myPeerId }) {
   const peersRef = useRef(new Map());
+  const remoteStreamsRef = useRef(new Map());
   const [remoteStreams, setRemoteStreams] = useState(new Map());
   const localStreamRef = useRef(localStream);
   const signalingRef = useRef(signaling);
+  const myPeerIdRef = useRef(myPeerId);
 
   useEffect(() => {
     localStreamRef.current = localStream;
@@ -21,21 +17,26 @@ export function useWebRTC({ localStream, enabled, signaling }) {
     signalingRef.current = signaling;
   }, [signaling]);
 
+  useEffect(() => {
+    myPeerIdRef.current = myPeerId;
+  }, [myPeerId]);
+
   const updateRemoteStream = useCallback((peerId, stream) => {
-    setRemoteStreams((prev) => {
-      const next = new Map(prev);
-      if (stream) next.set(peerId, stream);
-      else next.delete(peerId);
-      return next;
-    });
+    if (stream) remoteStreamsRef.current.set(peerId, stream);
+    else remoteStreamsRef.current.delete(peerId);
+    setRemoteStreams(new Map(remoteStreamsRef.current));
   }, []);
+
+  const getSignaling = () => signalingRef.current;
 
   const renegotiatePeer = useCallback(async (pc, peerId) => {
     if (!pc || pc.signalingState === 'closed') return;
+    const sig = getSignaling();
+    if (!sig) return;
     try {
-      const offer = await pc.createOffer();
+      const offer = await pc.createOffer({ iceRestart: false });
       await pc.setLocalDescription(offer);
-      signalingRef.current?.sendSignal('offer', { to: peerId, offer: pc.localDescription });
+      sig.sendSignal('offer', { to: peerId, offer: pc.localDescription });
     } catch (err) {
       console.error('WebRTC renegotiation failed:', err);
     }
@@ -86,28 +87,51 @@ export function useWebRTC({ localStream, enabled, signaling }) {
     });
   }, [localStream, enabled, syncLocalTracks]);
 
+  const attachRemoteTrack = useCallback(
+    (peerId, track) => {
+      let stream = remoteStreamsRef.current.get(peerId);
+      if (!stream) {
+        stream = new MediaStream();
+        remoteStreamsRef.current.set(peerId, stream);
+      }
+      stream.getTracks()
+        .filter((t) => t.kind === track.kind)
+        .forEach((t) => stream.removeTrack(t));
+      stream.addTrack(track);
+      track.onended = () => {
+        stream.removeTrack(track);
+        updateRemoteStream(peerId, stream.getTracks().length ? new MediaStream(stream.getTracks()) : null);
+      };
+      updateRemoteStream(peerId, new MediaStream(stream.getTracks()));
+    },
+    [updateRemoteStream]
+  );
+
   const createPeerConnection = useCallback(
-    (peerId, isInitiator) => {
+    (peerId, isInitiator, sigOverride) => {
       if (peersRef.current.has(peerId)) {
         return peersRef.current.get(peerId);
       }
 
-      const pc = new RTCPeerConnection(ICE_SERVERS);
+      const sig = sigOverride || getSignaling();
+      const pc = new RTCPeerConnection(getIceServers());
       peersRef.current.set(peerId, pc);
 
       const stream = localStreamRef.current;
-      if (stream) {
+      if (stream?.getTracks().length) {
         stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      } else {
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+        pc.addTransceiver('video', { direction: 'recvonly' });
       }
 
       pc.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        if (remoteStream) updateRemoteStream(peerId, remoteStream);
+        if (event.track) attachRemoteTrack(peerId, event.track);
       };
 
       pc.onicecandidate = (event) => {
-        if (event.candidate && signalingRef.current) {
-          signalingRef.current.sendSignal('ice', {
+        if (event.candidate && sig) {
+          sig.sendSignal('ice', {
             to: peerId,
             candidate: event.candidate,
           });
@@ -115,18 +139,21 @@ export function useWebRTC({ localStream, enabled, signaling }) {
       };
 
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        if (pc.connectionState === 'failed') {
+          pc.restartIce?.();
+          renegotiatePeer(pc, peerId);
+        } else if (pc.connectionState === 'closed') {
           pc.close();
           peersRef.current.delete(peerId);
           updateRemoteStream(peerId, null);
         }
       };
 
-      if (isInitiator) {
+      if (isInitiator && sig) {
         pc.createOffer()
           .then((offer) => pc.setLocalDescription(offer))
           .then(() => {
-            signalingRef.current?.sendSignal('offer', {
+            sig.sendSignal('offer', {
               to: peerId,
               offer: pc.localDescription,
             });
@@ -136,7 +163,7 @@ export function useWebRTC({ localStream, enabled, signaling }) {
 
       return pc;
     },
-    [updateRemoteStream]
+    [attachRemoteTrack, updateRemoteStream, renegotiatePeer]
   );
 
   const removePeer = useCallback(
@@ -154,17 +181,21 @@ export function useWebRTC({ localStream, enabled, signaling }) {
   const handleSignal = useCallback(
     async (payload) => {
       const { type, from, offer, answer, candidate } = payload;
-      if (!from) return;
+      if (!from || from === myPeerIdRef.current) return;
 
       if (type === 'offer' && offer) {
         let pc = peersRef.current.get(from);
         const isNew = !pc;
         if (!pc) pc = createPeerConnection(from, false);
 
+        if (pc.signalingState === 'have-local-offer') {
+          await pc.setLocalDescription({ type: 'rollback' });
+        }
+
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const ans = await pc.createAnswer();
         await pc.setLocalDescription(ans);
-        signalingRef.current?.sendSignal('answer', { to: from, answer: pc.localDescription });
+        getSignaling()?.sendSignal('answer', { to: from, answer: pc.localDescription });
 
         if (isNew) {
           await syncLocalTracks(pc, from, localStreamRef.current);
@@ -175,7 +206,7 @@ export function useWebRTC({ localStream, enabled, signaling }) {
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
           } catch {
-            /* ignore stale signaling */
+            /* stale signaling */
           }
         }
       } else if (type === 'ice' && candidate) {
@@ -187,9 +218,12 @@ export function useWebRTC({ localStream, enabled, signaling }) {
   );
 
   const connectToExistingPeers = useCallback(
-    (peerIds) => {
-      peerIds.forEach((peerId) => {
-        if (peerId) createPeerConnection(peerId, true);
+    (peerIds, sigOverride) => {
+      if (sigOverride) signalingRef.current = sigOverride;
+      (peerIds || []).forEach((peerId) => {
+        if (peerId && peerId !== myPeerIdRef.current) {
+          createPeerConnection(peerId, true, sigOverride || getSignaling());
+        }
       });
     },
     [createPeerConnection]
@@ -198,6 +232,7 @@ export function useWebRTC({ localStream, enabled, signaling }) {
   const cleanup = useCallback(() => {
     peersRef.current.forEach((pc) => pc.close());
     peersRef.current.clear();
+    remoteStreamsRef.current.clear();
     setRemoteStreams(new Map());
   }, []);
 
@@ -207,6 +242,5 @@ export function useWebRTC({ localStream, enabled, signaling }) {
     cleanup,
     removePeer,
     handleSignal,
-    onPeerJoined: () => {},
   };
 }

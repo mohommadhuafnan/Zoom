@@ -32,6 +32,7 @@ function connectSocketSignaling({ meetingCode, peerId, displayName, token, guest
 
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('Connection timed out')), 20000);
+    let existingPeersFromJoin = [];
 
     const onConnect = () => {
       clearTimeout(timeout);
@@ -39,7 +40,7 @@ function connectSocketSignaling({ meetingCode, peerId, displayName, token, guest
 
       socket.on('room:joined', ({ participants, existingPeers }) => {
         handlers.onParticipants?.(dedupeParticipants(participants));
-        handlers.onExistingPeers?.(existingPeers);
+        existingPeersFromJoin = existingPeers || [];
       });
       socket.on('peer:joined', (peer) => handlers.onPeerJoined?.(peer));
       socket.on('peer:left', ({ socketId }) => handlers.onPeerLeft?.({ peerId: socketId }));
@@ -69,6 +70,7 @@ function connectSocketSignaling({ meetingCode, peerId, displayName, token, guest
           waiting: false,
           meeting: response.meeting,
           isHost: response.isHost,
+          existingPeers: response.existingPeers || existingPeersFromJoin,
         });
       });
     };
@@ -123,7 +125,10 @@ function connectSupabaseSignaling({ meetingCode, peerId, displayName, isHost, ha
   removeRealtimeChannel(channelName);
 
   const channel = supabase.channel(channelName, {
-    config: { presence: { key: peerId } },
+    config: {
+      presence: { key: peerId },
+      broadcast: { self: false },
+    },
   });
 
   let joined = false;
@@ -184,13 +189,12 @@ function connectSupabaseSignaling({ meetingCode, peerId, displayName, isHost, ha
           .map((p) => p.peerId)
           .filter((id) => id && id !== peerId);
 
-        handlers.onExistingPeers?.(existingPeers);
-
         resolve({
           mode: 'supabase',
           waiting: false,
           isHost,
           peerId,
+          existingPeers,
           sendSignal(type, payload) {
             channel.send({
               type: 'broadcast',
