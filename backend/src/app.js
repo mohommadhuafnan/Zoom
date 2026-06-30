@@ -27,6 +27,7 @@ export function createApp() {
       status: 'ok',
       timestamp: new Date().toISOString(),
       env: env.nodeEnv,
+      supabase: Boolean(env.supabase.url && env.supabase.secretKey),
     });
   });
 

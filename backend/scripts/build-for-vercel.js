@@ -9,17 +9,16 @@ const repoRoot = path.join(backendDir, '..');
 const frontendDir = path.join(repoRoot, 'frontend');
 const publicDir = path.join(backendDir, 'public');
 const distDir = path.join(frontendDir, 'dist');
-const rootVercelPath = path.join(repoRoot, 'vercel.json');
+const backendVercelPath = path.join(backendDir, 'vercel.json');
 
-function isMonorepoDeploy() {
-  const rootDir = (process.env.VERCEL_PROJECT_SETTINGS_ROOT_DIRECTORY || '').replace(/^\.\//, '');
-  // Vercel Root Directory = backend → use backend/vercel.json and public/
-  if (rootDir === 'backend') return false;
-
-  if (!fs.existsSync(rootVercelPath)) return false;
+/** backend/vercel.json static-build expects output in public/ */
+function isPublicFolderRequired() {
+  if (!fs.existsSync(backendVercelPath)) return false;
   try {
-    const config = JSON.parse(fs.readFileSync(rootVercelPath, 'utf8'));
-    return config.builds?.some((b) => String(b.src).includes('frontend/package.json'));
+    const config = JSON.parse(fs.readFileSync(backendVercelPath, 'utf8'));
+    return config.builds?.some(
+      (b) => b.use === '@vercel/static-build' && b.config?.distDir === 'public'
+    );
   } catch {
     return false;
   }
@@ -33,26 +32,24 @@ function copyDistToPublic() {
   console.log('Frontend copied to backend/public');
 }
 
-// Root vercel.json builds frontend separately — skip public folder
-if (isMonorepoDeploy()) {
-  console.log('Monorepo deploy detected — skipping backend/public build');
+if (!isPublicFolderRequired()) {
+  console.log('No backend/public static build configured — skipping');
   process.exit(0);
 }
 
-console.log('Standalone backend deploy — building frontend into public/...');
+console.log('Building frontend into backend/public for Vercel...');
 
 if (!fs.existsSync(path.join(frontendDir, 'package.json'))) {
-  console.error('frontend/ not found. Set Vercel Root Directory to repository root (.)');
+  console.error(
+    'frontend/ not found. Ensure the full repository is cloned (Vercel clones the repo even when Root Directory is backend).'
+  );
   process.exit(1);
 }
 
-if (fs.existsSync(distDir)) {
-  copyDistToPublic();
-  process.exit(0);
+if (!fs.existsSync(distDir)) {
+  execSync('npm install', { cwd: frontendDir, stdio: 'inherit' });
+  execSync('npm run build', { cwd: frontendDir, stdio: 'inherit' });
 }
-
-execSync('npm install', { cwd: frontendDir, stdio: 'inherit' });
-execSync('npm run build', { cwd: frontendDir, stdio: 'inherit' });
 
 if (!fs.existsSync(distDir)) {
   console.error('frontend/dist not created after build');

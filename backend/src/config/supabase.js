@@ -7,8 +7,9 @@ export function getSupabase() {
   if (!supabaseClient) {
     const { url, secretKey } = env.supabase;
     if (!url || !secretKey) {
+      const missing = [!url && 'SUPABASE_URL', !secretKey && 'SUPABASE_SECRET_KEY'].filter(Boolean).join(', ');
       throw new Error(
-        'Missing SUPABASE_URL or SUPABASE_SECRET_KEY — add them in Vercel Environment Variables'
+        `Missing ${missing} — add them in Vercel → Settings → Environment Variables (Production + Preview)`
       );
     }
     supabaseClient = createClient(url, secretKey, {
