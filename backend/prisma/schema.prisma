@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  displayName  String   @map("display_name")
+  avatarUrl    String?  @map("avatar_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  hostedMeetings Meeting[]              @relation("HostMeetings")
+  participations MeetingParticipation[]
+
+  @@map("users")
+}
+
+model Meeting {
+  id           String    @id @default(uuid())
+  meetingCode  String    @unique @map("meeting_code")
+  title        String
+  hostId       String    @map("host_id")
+  host         User      @relation("HostMeetings", fields: [hostId], references: [id])
+  waitingRoom  Boolean   @default(false) @map("waiting_room")
+  isActive     Boolean   @default(true) @map("is_active")
+  startedAt    DateTime  @default(now()) @map("started_at")
+  endedAt      DateTime? @map("ended_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  participations MeetingParticipation[]
+  chatMessages   ChatMessage[]
+
+  @@map("meetings")
+}
+
+model MeetingParticipation {
+  id        String    @id @default(uuid())
+  meetingId String    @map("meeting_id")
+  meeting   Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id])
+  joinedAt  DateTime  @default(now()) @map("joined_at")
+  leftAt    DateTime? @map("left_at")
+  role      String    @default("participant") // host | participant
+
+  @@map("meeting_participations")
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  meetingId String   @map("meeting_id")
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  senderId  String   @map("sender_id")
+  senderName String  @map("sender_name")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("chat_messages")
+}
