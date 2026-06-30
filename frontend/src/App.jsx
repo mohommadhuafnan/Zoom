@@ -21,22 +21,8 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/join"
-        element={
-          <ProtectedRoute>
-            <JoinMeeting />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/join/:code"
-        element={
-          <ProtectedRoute>
-            <JoinMeeting />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/join" element={<JoinMeeting />} />
+      <Route path="/join/:code" element={<JoinMeeting />} />
       <Route
         path="/meeting/:code"
         element={

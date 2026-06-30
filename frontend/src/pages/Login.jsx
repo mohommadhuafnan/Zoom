@@ -72,7 +72,7 @@ export default function Login() {
           </button>
           <p className="text-center text-sm text-gray-500">
             Don&apos;t have an account?{' '}
-            <Link to="/register" className="text-zoom-blue hover:underline font-medium">
+            <Link to="/register" state={{ from: location.state?.from }} className="text-zoom-blue hover:underline font-medium">
               Sign up
             </Link>
           </p>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -11,6 +11,8 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from?.pathname || '/';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -18,7 +20,7 @@ export default function Register() {
     setLoading(true);
     try {
       await register(email, password, displayName);
-      navigate('/');
+      navigate(from, { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {

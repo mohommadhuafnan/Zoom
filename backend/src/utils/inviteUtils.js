@@ -1,7 +1,8 @@
 import { env } from '../config/env.js';
 
 export function buildJoinUrl(meetingCode) {
-  return `${env.clientUrl}/join/${meetingCode}`;
+  const base = env.clientUrl.replace(/\/$/, '');
+  return `${base}/join/${meetingCode}`;
 }
 
 export function formatMeetingTime(scheduledAt, timezone = 'UTC') {
