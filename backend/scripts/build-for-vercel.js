@@ -47,8 +47,10 @@ if (!fs.existsSync(path.join(frontendDir, 'package.json'))) {
 }
 
 if (!fs.existsSync(distDir)) {
-  execSync('npm install', { cwd: frontendDir, stdio: 'inherit' });
-  execSync('npm run build', { cwd: frontendDir, stdio: 'inherit' });
+  // NODE_ENV=production on Vercel skips devDependencies (vite) — force dev install for build
+  const installEnv = { ...process.env, NODE_ENV: 'development' };
+  execSync('npm install --include=dev', { cwd: frontendDir, stdio: 'inherit', env: installEnv });
+  execSync('npm run build', { cwd: frontendDir, stdio: 'inherit', env: installEnv });
 }
 
 if (!fs.existsSync(distDir)) {
