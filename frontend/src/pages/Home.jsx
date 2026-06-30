@@ -124,6 +124,13 @@ export default function Home() {
     return d.toDateString() === t.toDateString();
   });
 
+  const canStartMeeting = (m) => {
+    const scheduled = new Date(m.scheduledAt);
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    return scheduled >= startOfToday;
+  };
+
   const timeStr = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const dateStr = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -222,6 +229,9 @@ export default function Home() {
                             {formatDay(m.scheduledAt)} · {formatTime(m.scheduledAt)}
                           </p>
                           <p className="text-xs text-gray-400 font-mono mt-0.5">{m.meetingCode}</p>
+                          {!m.isActive && (
+                            <p className="text-xs text-amber-600 mt-1">Waiting for host to start</p>
+                          )}
                         </div>
                         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                           <button
@@ -247,12 +257,12 @@ export default function Home() {
                           </button>
                         </div>
                       </div>
-                      {todayMeetings.some((t) => t.id === m.id) && (
+                      {canStartMeeting(m) && (
                         <button
                           onClick={() => navigate(`/meeting/${m.meetingCode}`)}
-                          className="mt-2 text-xs text-zoom-blue hover:underline"
+                          className="mt-2 text-xs text-zoom-blue hover:underline font-medium"
                         >
-                          Start now →
+                          {todayMeetings.some((t) => t.id === m.id) ? 'Start now →' : 'Start meeting →'}
                         </button>
                       )}
                     </li>

@@ -386,7 +386,7 @@ export async function getScheduledMeetings(hostId, { days = 30 } = {}) {
     .select('*')
     .eq('host_id', hostId)
     .not('scheduled_at', 'is', null)
-    .eq('is_active', true)
+    .is('ended_at', null)
     .gte('scheduled_at', now.toISOString())
     .lte('scheduled_at', until.toISOString())
     .order('scheduled_at', { ascending: true });
