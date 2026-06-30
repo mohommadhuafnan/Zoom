@@ -1,8 +1,26 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
 import authRoutes from './routes/auth.js';
 import meetingRoutes from './routes/meetings.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const backendRoot = path.join(__dirname, '..');
+
+function attachFrontend(app) {
+  const staticDir = [path.join(backendRoot, 'public'), path.join(backendRoot, '..', 'frontend', 'dist')].find(
+    (dir) => fs.existsSync(path.join(dir, 'index.html'))
+  );
+  if (!staticDir) return;
+
+  app.use(express.static(staticDir, { index: false }));
+  app.get(/^(?!\/api)(?!\/socket\.io).*/, (_req, res) => {
+    res.sendFile(path.join(staticDir, 'index.html'));
+  });
+}
 
 export function createApp() {
   const app = express();
@@ -37,6 +55,8 @@ export function createApp() {
   // Mount at /api (local) and / (Vercel backend service may strip /api prefix)
   app.use('/api', api);
   app.use(api);
+
+  attachFrontend(app);
 
   app.use((err, _req, res, _next) => {
     console.error('Unhandled error:', err);
