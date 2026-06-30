@@ -2,57 +2,116 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 
 export function useLocalMedia() {
   const [localStream, setLocalStream] = useState(null);
-  const [audioMuted, setAudioMuted] = useState(false);
-  const [videoOff, setVideoOff] = useState(false);
+  const [audioMuted, setAudioMuted] = useState(true);
+  const [videoOff, setVideoOff] = useState(true);
   const [screenSharing, setScreenSharing] = useState(false);
   const cameraStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
 
-  const startMedia = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-      cameraStreamRef.current = stream;
-      setLocalStream(stream);
-      return stream;
-    } catch (err) {
-      console.error('Failed to get user media:', err);
-      // Audio-only fallback
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        cameraStreamRef.current = stream;
-        setLocalStream(stream);
-        setVideoOff(true);
-        return stream;
-      } catch {
-        throw err;
-      }
+  const applyStream = useCallback((stream) => {
+    cameraStreamRef.current = stream;
+    setLocalStream(stream);
+    if (stream) {
+      const at = stream.getAudioTracks()[0];
+      const vt = stream.getVideoTracks()[0];
+      setAudioMuted(!at || !at.enabled);
+      setVideoOff(!vt || !vt.enabled);
     }
   }, []);
 
-  const toggleAudio = useCallback(() => {
-    if (!localStream) return false;
-    const track = localStream.getAudioTracks()[0];
-    if (track) {
-      track.enabled = !track.enabled;
-      setAudioMuted(!track.enabled);
-      return !track.enabled;
-    }
-    return audioMuted;
-  }, [localStream, audioMuted]);
+  const startMedia = useCallback(
+    async ({ audio = true, video = true } = {}) => {
+      if (!audio && !video) {
+        setAudioMuted(true);
+        setVideoOff(true);
+        return null;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio, video });
+        stream.getAudioTracks().forEach((t) => {
+          t.enabled = audio;
+        });
+        stream.getVideoTracks().forEach((t) => {
+          t.enabled = video;
+        });
+        applyStream(stream);
+        setAudioMuted(!audio);
+        setVideoOff(!video);
+        return stream;
+      } catch (err) {
+        console.error('Failed to get user media:', err);
+        if (video && audio) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            applyStream(stream);
+            setVideoOff(true);
+            setAudioMuted(false);
+            return stream;
+          } catch {
+            /* fall through */
+          }
+        }
+        setAudioMuted(true);
+        setVideoOff(true);
+        return null;
+      }
+    },
+    [applyStream]
+  );
 
-  const toggleVideo = useCallback(() => {
-    if (!localStream) return false;
-    const track = localStream.getVideoTracks()[0];
+  const toggleAudio = useCallback(async () => {
+    let stream = localStream || cameraStreamRef.current;
+    if (!stream?.getAudioTracks().length) {
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        const track = audioStream.getAudioTracks()[0];
+        if (stream) {
+          stream.addTrack(track);
+          setLocalStream(new MediaStream(stream.getTracks()));
+        } else {
+          applyStream(new MediaStream([track]));
+        }
+        setAudioMuted(false);
+        return false;
+      } catch {
+        return true;
+      }
+    }
+    const track = stream.getAudioTracks()[0];
+    track.enabled = !track.enabled;
+    setAudioMuted(!track.enabled);
+    return !track.enabled;
+  }, [localStream, applyStream]);
+
+  const toggleVideo = useCallback(async () => {
+    let stream = localStream || cameraStreamRef.current;
+    const track = stream?.getVideoTracks()[0];
+
     if (track) {
       track.enabled = !track.enabled;
       setVideoOff(!track.enabled);
+      setLocalStream(new MediaStream(stream.getTracks()));
       return !track.enabled;
     }
-    return videoOff;
-  }, [localStream, videoOff]);
+
+    try {
+      const videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const newTrack = videoStream.getVideoTracks()[0];
+      if (stream) {
+        stream.addTrack(newTrack);
+        setLocalStream(new MediaStream(stream.getTracks()));
+        cameraStreamRef.current = stream;
+      } else {
+        const newStream = new MediaStream([newTrack]);
+        applyStream(newStream);
+      }
+      setVideoOff(false);
+      return false;
+    } catch (err) {
+      console.error('Camera failed:', err);
+      return true;
+    }
+  }, [localStream, applyStream]);
 
   const startScreenShare = useCallback(async () => {
     try {
@@ -65,9 +124,9 @@ export function useLocalMedia() {
       const screenTrack = screenStream.getVideoTracks()[0];
       screenTrack.onended = () => stopScreenShare();
 
-      // Replace video track in local stream for WebRTC
+      const base = cameraStreamRef.current || localStream;
       const newStream = new MediaStream([
-        ...(localStream?.getAudioTracks() || []),
+        ...(base?.getAudioTracks() || []),
         screenTrack,
       ]);
       setLocalStream(newStream);
@@ -85,7 +144,7 @@ export function useLocalMedia() {
 
     const camera = cameraStreamRef.current;
     if (camera) {
-      setLocalStream(camera);
+      setLocalStream(new MediaStream(camera.getTracks()));
     }
     setScreenSharing(false);
   }, []);
@@ -120,5 +179,7 @@ export function useLocalMedia() {
     toggleScreenShare,
     stopScreenShare,
     stopAll,
+    setAudioMuted,
+    setVideoOff,
   };
 }

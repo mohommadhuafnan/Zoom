@@ -14,12 +14,13 @@ import {
   Circle,
 } from 'lucide-react';
 
-function ControlBtn({ icon: Icon, label, active, danger, badge, onClick, children }) {
+function ControlBtn({ icon: Icon, label, active, danger, badge, onClick, children, ...rest }) {
   return (
     <div className="relative">
       <button
         onClick={onClick}
         className={`zoom-control-btn ${active ? 'active' : ''} ${danger ? 'danger' : ''}`}
+        {...rest}
       >
         <div className="relative">
           <Icon className="w-5 h-5" />
@@ -94,6 +95,7 @@ export default function ControlBar({
           label="React"
           active={showReactions}
           onClick={onToggleReactions}
+          data-reactions-trigger
         />
         {isHost && (
           <ControlBtn

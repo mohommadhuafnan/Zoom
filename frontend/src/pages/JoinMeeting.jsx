@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Video, User } from 'lucide-react';
 import { api } from '../services/api';
-import { connectSocket, connectSocketAsGuest } from '../services/socket';
 import { setGuestSession } from '../utils/guestSession';
 import { useAuth } from '../context/AuthContext';
 import AnimatedJoinBackground from '../components/join/AnimatedJoinBackground';
@@ -60,13 +59,6 @@ export default function JoinMeeting() {
 
       const guestId = crypto.randomUUID();
       setGuestSession({ displayName: name, guestId });
-
-      const token = localStorage.getItem('token');
-      if (token) {
-        connectSocket(token);
-      } else {
-        connectSocketAsGuest(name, guestId);
-      }
 
       navigate(`/meeting/${meeting.meetingCode}`, {
         state: { displayName: name },

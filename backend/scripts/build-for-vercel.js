@@ -47,10 +47,15 @@ if (!fs.existsSync(path.join(frontendDir, 'package.json'))) {
 }
 
 if (!fs.existsSync(distDir)) {
-  // NODE_ENV=production on Vercel skips devDependencies (vite) — force dev install for build
   const installEnv = { ...process.env, NODE_ENV: 'development' };
+  const buildEnv = {
+    ...installEnv,
+    VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '',
+    VITE_SUPABASE_PUBLISHABLE_KEY:
+      process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || '',
+  };
   execSync('npm install --include=dev', { cwd: frontendDir, stdio: 'inherit', env: installEnv });
-  execSync('npm run build', { cwd: frontendDir, stdio: 'inherit', env: installEnv });
+  execSync('npm run build', { cwd: frontendDir, stdio: 'inherit', env: buildEnv });
 }
 
 if (!fs.existsSync(distDir)) {

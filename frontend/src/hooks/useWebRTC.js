@@ -1,5 +1,4 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { getSocket } from '../services/socket';
 
 const ICE_SERVERS = {
   iceServers: [
@@ -8,48 +7,53 @@ const ICE_SERVERS = {
   ],
 };
 
-/**
- * Mesh WebRTC hook — each peer connects directly to every other peer.
- * Structured so an SFU adapter can replace this later without changing UI components.
- */
-export function useWebRTC({ meetingCode, localStream, enabled }) {
+export function useWebRTC({ localStream, enabled, signaling }) {
   const peersRef = useRef(new Map());
   const [remoteStreams, setRemoteStreams] = useState(new Map());
   const localStreamRef = useRef(localStream);
+  const signalingRef = useRef(signaling);
 
   useEffect(() => {
     localStreamRef.current = localStream;
-    peersRef.current.forEach((pc, socketId) => {
+  }, [localStream]);
+
+  useEffect(() => {
+    signalingRef.current = signaling;
+  }, [signaling]);
+
+  useEffect(() => {
+    peersRef.current.forEach((pc) => {
+      const stream = localStreamRef.current;
+      if (!stream) return;
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTrack = stream.getAudioTracks()[0];
       const senders = pc.getSenders();
-      const videoTrack = localStream?.getVideoTracks()[0];
-      const audioTrack = localStream?.getAudioTracks()[0];
       const videoSender = senders.find((s) => s.track?.kind === 'video');
       const audioSender = senders.find((s) => s.track?.kind === 'audio');
       if (videoSender && videoTrack) videoSender.replaceTrack(videoTrack).catch(() => {});
-      else if (videoTrack) pc.addTrack(videoTrack, localStream);
+      else if (videoTrack) pc.addTrack(videoTrack, stream);
       if (audioSender && audioTrack) audioSender.replaceTrack(audioTrack).catch(() => {});
-      else if (audioTrack) pc.addTrack(audioTrack, localStream);
+      else if (audioTrack) pc.addTrack(audioTrack, stream);
     });
   }, [localStream]);
 
-  const updateRemoteStream = useCallback((socketId, stream) => {
+  const updateRemoteStream = useCallback((peerId, stream) => {
     setRemoteStreams((prev) => {
       const next = new Map(prev);
-      if (stream) next.set(socketId, stream);
-      else next.delete(socketId);
+      if (stream) next.set(peerId, stream);
+      else next.delete(peerId);
       return next;
     });
   }, []);
 
   const createPeerConnection = useCallback(
-    (socketId, isInitiator) => {
-      if (peersRef.current.has(socketId)) {
-        return peersRef.current.get(socketId);
+    (peerId, isInitiator) => {
+      if (peersRef.current.has(peerId)) {
+        return peersRef.current.get(peerId);
       }
 
-      const socket = getSocket();
       const pc = new RTCPeerConnection(ICE_SERVERS);
-      peersRef.current.set(socketId, pc);
+      peersRef.current.set(peerId, pc);
 
       const stream = localStreamRef.current;
       if (stream) {
@@ -58,13 +62,13 @@ export function useWebRTC({ meetingCode, localStream, enabled }) {
 
       pc.ontrack = (event) => {
         const [remoteStream] = event.streams;
-        if (remoteStream) updateRemoteStream(socketId, remoteStream);
+        if (remoteStream) updateRemoteStream(peerId, remoteStream);
       };
 
       pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit('webrtc:ice-candidate', {
-            to: socketId,
+        if (event.candidate && signalingRef.current) {
+          signalingRef.current.sendSignal('ice', {
+            to: peerId,
             candidate: event.candidate,
           });
         }
@@ -73,8 +77,8 @@ export function useWebRTC({ meetingCode, localStream, enabled }) {
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
           pc.close();
-          peersRef.current.delete(socketId);
-          updateRemoteStream(socketId, null);
+          peersRef.current.delete(peerId);
+          updateRemoteStream(peerId, null);
         }
       };
 
@@ -82,7 +86,10 @@ export function useWebRTC({ meetingCode, localStream, enabled }) {
         pc.createOffer()
           .then((offer) => pc.setLocalDescription(offer))
           .then(() => {
-            socket.emit('webrtc:offer', { to: socketId, offer: pc.localDescription });
+            signalingRef.current?.sendSignal('offer', {
+              to: peerId,
+              offer: pc.localDescription,
+            });
           })
           .catch(console.error);
       }
@@ -93,69 +100,50 @@ export function useWebRTC({ meetingCode, localStream, enabled }) {
   );
 
   const removePeer = useCallback(
-    (socketId) => {
-      const pc = peersRef.current.get(socketId);
+    (peerId) => {
+      const pc = peersRef.current.get(peerId);
       if (pc) {
         pc.close();
-        peersRef.current.delete(socketId);
+        peersRef.current.delete(peerId);
       }
-      updateRemoteStream(socketId, null);
+      updateRemoteStream(peerId, null);
     },
     [updateRemoteStream]
   );
 
-  useEffect(() => {
-    if (!enabled || !meetingCode) return;
+  const handleSignal = useCallback(
+    async (payload) => {
+      const { type, from, offer, answer, candidate } = payload;
+      if (!from) return;
 
-    const socket = getSocket();
-    if (!socket) return;
-
-    const onPeerJoined = ({ socketId }) => {
-      createPeerConnection(socketId, true);
-    };
-
-    const onPeerLeft = ({ socketId }) => {
-      removePeer(socketId);
-    };
-
-    const onOffer = async ({ from, offer }) => {
-      const pc = createPeerConnection(from, false);
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.emit('webrtc:answer', { to: from, answer: pc.localDescription });
-    };
-
-    const onAnswer = async ({ from, answer }) => {
-      const pc = peersRef.current.get(from);
-      if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
-    };
-
-    const onIceCandidate = async ({ from, candidate }) => {
-      const pc = peersRef.current.get(from);
-      if (pc && candidate) {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+      if (type === 'offer' && offer) {
+        const pc = createPeerConnection(from, false);
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const ans = await pc.createAnswer();
+        await pc.setLocalDescription(ans);
+        signalingRef.current?.sendSignal('answer', { to: from, answer: pc.localDescription });
+      } else if (type === 'answer' && answer) {
+        const pc = peersRef.current.get(from);
+        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      } else if (type === 'ice' && candidate) {
+        const pc = peersRef.current.get(from);
+        if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
       }
-    };
-
-    socket.on('peer:joined', onPeerJoined);
-    socket.on('peer:left', onPeerLeft);
-    socket.on('webrtc:offer', onOffer);
-    socket.on('webrtc:answer', onAnswer);
-    socket.on('webrtc:ice-candidate', onIceCandidate);
-
-    return () => {
-      socket.off('peer:joined', onPeerJoined);
-      socket.off('peer:left', onPeerLeft);
-      socket.off('webrtc:offer', onOffer);
-      socket.off('webrtc:answer', onAnswer);
-      socket.off('webrtc:ice-candidate', onIceCandidate);
-    };
-  }, [enabled, meetingCode, createPeerConnection, removePeer]);
+    },
+    [createPeerConnection]
+  );
 
   const connectToExistingPeers = useCallback(
-    (peerSocketIds) => {
-      peerSocketIds.forEach((socketId) => createPeerConnection(socketId, true));
+    (peerIds) => {
+      peerIds.forEach((peerId) => createPeerConnection(peerId, true));
+    },
+    [createPeerConnection]
+  );
+
+  const onPeerJoined = useCallback(
+    (peer) => {
+      const peerId = peer.peerId || peer.socketId;
+      if (peerId) createPeerConnection(peerId, true);
     },
     [createPeerConnection]
   );
@@ -166,5 +154,12 @@ export function useWebRTC({ meetingCode, localStream, enabled }) {
     setRemoteStreams(new Map());
   }, []);
 
-  return { remoteStreams, connectToExistingPeers, cleanup, removePeer };
+  return {
+    remoteStreams,
+    connectToExistingPeers,
+    cleanup,
+    removePeer,
+    handleSignal,
+    onPeerJoined,
+  };
 }

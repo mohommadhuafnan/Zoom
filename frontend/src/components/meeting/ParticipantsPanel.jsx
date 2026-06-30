@@ -20,9 +20,11 @@ export default function ParticipantsPanel({
       </header>
 
       <div className="flex-1 overflow-y-auto">
-        {participants.map((p) => (
+        {participants.map((p) => {
+          const id = p.peerId || p.socketId;
+          return (
           <div
-            key={p.socketId}
+            key={id}
             className="flex items-center gap-3 px-4 py-3 hover:bg-white/5"
           >
             <div className="w-8 h-8 rounded-full bg-zoom-blue flex items-center justify-center text-white text-sm font-medium shrink-0">
@@ -32,7 +34,7 @@ export default function ParticipantsPanel({
               <p className="text-white text-sm truncate">
                 {p.displayName}
                 {p.isHost ? ' (Host)' : ''}
-                {p.socketId === mySocketId ? ', me' : ''}
+                {p.socketId === mySocketId || p.peerId === mySocketId ? ', me' : ''}
               </p>
             </div>
             <div className="flex items-center gap-1 shrink-0">
@@ -46,20 +48,22 @@ export default function ParticipantsPanel({
               ) : (
                 <Video className="w-4 h-4 text-white/60" />
               )}
-              {isHost && p.socketId !== mySocketId && (
+              {isHost && id !== mySocketId && (
                 <div className="relative group">
-                  <button className="p-1 text-white/60 hover:text-white">
+                  <button type="button" className="p-1 text-white/60 hover:text-white">
                     <MoreHorizontal className="w-4 h-4" />
                   </button>
                   <div className="hidden group-hover:block absolute right-0 top-full mt-1 bg-zinc-800 rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
                     <button
-                      onClick={() => onMute(p.socketId)}
+                      type="button"
+                      onClick={() => onMute(id)}
                       className="block w-full text-left px-3 py-1.5 text-sm text-white hover:bg-white/10"
                     >
                       Mute
                     </button>
                     <button
-                      onClick={() => onRemove(p.socketId)}
+                      type="button"
+                      onClick={() => onRemove(id)}
                       className="block w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-white/10"
                     >
                       Remove
@@ -69,7 +73,8 @@ export default function ParticipantsPanel({
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {isHost && (
