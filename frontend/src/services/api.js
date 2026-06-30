@@ -53,6 +53,9 @@ export const api = {
 
   getMeetingPublic: (code) => request(`/meetings/join/${encodeURIComponent(code)}`),
 
+  startMeeting: (code) =>
+    request(`/meetings/${encodeURIComponent(code)}/start`, { method: 'POST' }),
+
   getMeeting: (code) => request(`/meetings/${code}`),
 
   endMeeting: (id) => request(`/meetings/${id}/end`, { method: 'POST' }),

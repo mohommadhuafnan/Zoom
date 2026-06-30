@@ -65,11 +65,20 @@ export function setupSocket(io) {
     socket.on('room:join', async ({ meetingCode }, callback) => {
       try {
         const meeting = await getMeetingByCode(meetingCode);
-        if (!meeting || !meeting.isActive) {
-          return callback?.({ error: 'Meeting not found or has ended' });
+        if (!meeting) {
+          return callback?.({ error: 'Meeting not found' });
+        }
+        if (meeting.endedAt) {
+          return callback?.({ error: 'This meeting has ended' });
         }
 
         const isHost = meeting.hostId === socket.user.id;
+        if (!meeting.isActive && !isHost) {
+          return callback?.({
+            error: 'The host has not started the meeting yet',
+            waitingForHost: true,
+          });
+        }
         const room = getRoom(meetingCode);
 
         if (meeting.waitingRoom && !isHost) {

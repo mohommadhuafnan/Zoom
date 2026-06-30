@@ -52,13 +52,15 @@ export default function JoinMeeting() {
 
     try {
       const { meeting } = await api.getMeetingPublic(trimmedCode);
-      if (!meeting.isActive) {
+      if (meeting.ended) {
         setError('This meeting has ended');
         return;
       }
 
       const guestId = crypto.randomUUID();
-      setGuestSession({ displayName: name, guestId });
+      if (!user?.id || user.id !== meeting.hostId) {
+        setGuestSession({ displayName: name, guestId });
+      }
 
       navigate(`/meeting/${meeting.meetingCode}`, {
         state: { displayName: name },
@@ -83,7 +85,11 @@ export default function JoinMeeting() {
           </div>
           <h1 className="text-2xl font-bold text-white">Join meeting</h1>
           <p className="text-blue-100/80 mt-2 text-sm">
-            {preview?.title ? preview.title : 'No sign-in required — enter your name to join'}
+            {preview?.title
+              ? preview.title
+              : preview && !preview.hostStarted && !preview.ended
+                ? 'The host will start the meeting soon'
+                : 'No sign-in required — enter your name to join'}
           </p>
         </div>
 

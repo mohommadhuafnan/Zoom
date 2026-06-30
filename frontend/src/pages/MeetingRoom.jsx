@@ -4,7 +4,7 @@ import { Info, Shield, Maximize2, Minimize2, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getGuestSession, getMeetingDisplayName } from '../utils/guestSession';
 import { api } from '../services/api';
-import { connectMeetingSignaling } from '../services/signaling';
+import { connectMeetingSignaling, subscribeMeetingStarted, broadcastMeetingStarted } from '../services/signaling';
 import { useLocalMedia } from '../hooks/useLocalMedia';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { useRecording } from '../hooks/useRecording';
@@ -15,6 +15,7 @@ import ParticipantsPanel from '../components/meeting/ParticipantsPanel';
 import HostToolsPanel from '../components/meeting/HostToolsPanel';
 import ReactionsMenu from '../components/meeting/ReactionsMenu';
 import PreJoinLobby from '../components/meeting/PreJoinLobby';
+import WaitingForHostScreen from '../components/meeting/WaitingForHostScreen';
 
 export default function MeetingRoom() {
   const { code } = useParams();
@@ -27,7 +28,7 @@ export default function MeetingRoom() {
     [location.state?.displayName, user]
   );
 
-  const [phase, setPhase] = useState('lobby');
+  const [phase, setPhase] = useState('loading');
   const [meeting, setMeeting] = useState(null);
   const [isHost, setIsHost] = useState(false);
   const [participants, setParticipants] = useState([]);
@@ -75,12 +76,59 @@ export default function MeetingRoom() {
     }
   }, [code, navigate, user]);
 
+  const isMeetingHost = useMemo(
+    () => !!(user?.id && meeting?.hostId && user.id === meeting.hostId),
+    [user?.id, meeting?.hostId]
+  );
+
   useEffect(() => {
     api
       .getMeetingPublic(code)
-      .then(({ meeting: m }) => setMeeting(m))
-      .catch(() => {});
-  }, [code]);
+      .then(({ meeting: m }) => {
+        setMeeting(m);
+        if (m.ended) {
+          setError('This meeting has ended');
+          setPhase('lobby');
+          return;
+        }
+        const hostUser = user?.id && m.hostId === user.id;
+        if (!hostUser && !m.isActive) {
+          setPhase('waiting-for-host');
+        } else {
+          setPhase('lobby');
+        }
+      })
+      .catch(() => {
+        setError('Meeting not found');
+        setPhase('lobby');
+      });
+  }, [code, user?.id]);
+
+  useEffect(() => {
+    if (phase !== 'waiting-for-host' || isMeetingHost) return;
+
+    const checkStarted = async () => {
+      try {
+        const { meeting: m } = await api.getMeetingPublic(code);
+        setMeeting(m);
+        if (m.isActive) setPhase('lobby');
+        else if (m.ended) setError('This meeting has ended');
+      } catch {
+        /* keep polling */
+      }
+    };
+
+    const interval = setInterval(checkStarted, 3000);
+    const unsubscribe = subscribeMeetingStarted(code, () => {
+      setMeeting((prev) => (prev ? { ...prev, isActive: true, hostStarted: true } : prev));
+      setPhase('lobby');
+    });
+
+    return () => {
+      clearInterval(interval);
+      unsubscribe();
+    };
+  }, [phase, isMeetingHost, code]);
 
   useEffect(() => {
     startMedia({ audio: false, video: false });
@@ -133,12 +181,19 @@ export default function MeetingRoom() {
       const guest = getGuestSession();
       const token = localStorage.getItem('token');
       const peerId = guest?.guestId || user?.id || crypto.randomUUID();
+      const hostUser = !!(user?.id && meeting?.hostId && user.id === meeting.hostId);
+
+      if (hostUser && !meeting?.isActive) {
+        await api.startMeeting(code);
+        await broadcastMeetingStarted(code);
+        setMeeting((m) => (m ? { ...m, isActive: true, hostStarted: true } : m));
+      }
 
       const conn = await connectMeetingSignaling({
         meetingCode: code,
         peerId,
         displayName,
-        isHost: !!(user?.id && meeting?.hostId && user.id === meeting.hostId),
+        isHost: hostUser,
         token,
         guestName: displayName,
         guestId: guest?.guestId || peerId,
@@ -254,6 +309,24 @@ export default function MeetingRoom() {
 
   const participantCount = allParticipants.length || 1;
 
+  if (phase === 'loading') {
+    return (
+      <div className="min-h-screen bg-zoom-dark flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-zoom-blue border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (phase === 'waiting-for-host') {
+    return (
+      <WaitingForHostScreen
+        meetingTitle={meetingTitle}
+        hostName={meeting?.hostName}
+        displayName={displayName}
+      />
+    );
+  }
+
   if (phase === 'lobby') {
     return (
       <PreJoinLobby
@@ -269,6 +342,8 @@ export default function MeetingRoom() {
         onCancel={() => navigate(`/join/${code}`)}
         joining={joining}
         error={error}
+        isHost={isMeetingHost}
+        meetingStarted={!!meeting?.isActive}
       />
     );
   }

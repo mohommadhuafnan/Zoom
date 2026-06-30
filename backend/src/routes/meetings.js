@@ -4,6 +4,7 @@ import {
   createMeeting,
   getMeetingByCode,
   endMeeting,
+  startMeetingByCode,
   getUserMeetingHistory,
   scheduleMeeting,
   getScheduledMeetings,
@@ -121,13 +122,25 @@ router.get('/join/:code', async (req, res) => {
         meetingCode: meeting.meetingCode,
         title: meeting.title,
         isActive: meeting.isActive,
+        hostStarted: meeting.isActive,
+        ended: !!meeting.endedAt,
         waitingRoom: meeting.waitingRoom,
         scheduledAt: meeting.scheduledAt,
         hostId: meeting.hostId,
+        hostName: meeting.host?.displayName,
       },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:code/start', authMiddleware, async (req, res) => {
+  try {
+    const meeting = await startMeetingByCode(req.params.code, req.user.userId);
+    res.json({ meeting });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 

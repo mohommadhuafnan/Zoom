@@ -226,6 +226,36 @@ export function useSupabaseSignaling() {
   return supabaseConfigured;
 }
 
+const WAIT_CHANNEL_PREFIX = 'meeting-wait:';
+
+export function subscribeMeetingStarted(meetingCode, onStarted) {
+  if (!supabaseConfigured) return () => {};
+  const channel = supabase.channel(`${WAIT_CHANNEL_PREFIX}${meetingCode}`);
+  channel.on('broadcast', { event: 'meeting-started' }, () => onStarted());
+  channel.subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
+export async function broadcastMeetingStarted(meetingCode) {
+  if (!supabaseConfigured) return;
+  const channel = supabase.channel(`${WAIT_CHANNEL_PREFIX}${meetingCode}`);
+  await new Promise((resolve) => {
+    const timeout = setTimeout(resolve, 2500);
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        channel.send({
+          type: 'broadcast',
+          event: 'meeting-started',
+          payload: { at: Date.now() },
+        });
+        clearTimeout(timeout);
+        setTimeout(resolve, 150);
+      }
+    });
+  });
+  supabase.removeChannel(channel);
+}
+
 export function connectMeetingSignaling(options) {
   if (supabaseConfigured) {
     return connectSupabaseSignaling(options);

@@ -15,6 +15,8 @@ export default function PreJoinLobby({
   onCancel,
   joining,
   error,
+  isHost,
+  meetingStarted,
 }) {
   const videoRef = useRef(null);
 
@@ -29,6 +31,7 @@ export default function PreJoinLobby({
   }, [previewStream, videoOff]);
 
   const initial = displayName?.charAt(0)?.toUpperCase() || '?';
+  const hostStarting = isHost && !meetingStarted;
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 relative">
@@ -58,8 +61,15 @@ export default function PreJoinLobby({
 
         <div className="space-y-6">
           <div>
-            <h1 className="text-2xl font-bold text-white">Ready to join?</h1>
+            <h1 className="text-2xl font-bold text-white">
+              {hostStarting ? 'Ready to start?' : 'Ready to join?'}
+            </h1>
             <p className="text-blue-100/80 mt-1">{meetingTitle || 'UniMeet video call'}</p>
+            {hostStarting && (
+              <p className="text-amber-200/90 text-sm mt-2">
+                Participants can join after you start the meeting.
+              </p>
+            )}
             {meetingCode && (
               <p className="text-white/50 text-sm mt-1 font-mono tracking-wider">{meetingCode}</p>
             )}
@@ -112,7 +122,7 @@ export default function PreJoinLobby({
               disabled={joining || !displayName?.trim()}
               className="flex-[2] py-3 rounded-xl bg-zoom-blue hover:bg-blue-500 text-white font-semibold disabled:opacity-50"
             >
-              {joining ? 'Joining…' : 'Join now'}
+              {joining ? (hostStarting ? 'Starting…' : 'Joining…') : hostStarting ? 'Start meeting' : 'Join now'}
             </button>
           </div>
 

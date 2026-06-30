@@ -46,6 +46,7 @@ export async function createMeeting({ hostId, title, waitingRoom = false }) {
         title: title || 'Untitled Meeting',
         hostId,
         waitingRoom,
+        isActive: false,
       }),
     })
     .select()
@@ -104,6 +105,40 @@ export async function endMeeting(meetingId, hostId) {
 
   throwIfError(error, 'Failed to end meeting');
   return mapMeeting(row, meeting.host);
+}
+
+export async function startMeetingByCode(meetingCode, hostId) {
+  const meeting = await getMeetingByCode(meetingCode);
+  if (!meeting) {
+    const err = new Error('Meeting not found');
+    err.status = 404;
+    throw err;
+  }
+  if (meeting.hostId !== hostId) {
+    const err = new Error('Only the host can start the meeting');
+    err.status = 403;
+    throw err;
+  }
+  if (meeting.endedAt) {
+    const err = new Error('This meeting has already ended');
+    err.status = 400;
+    throw err;
+  }
+  if (meeting.isActive) {
+    return meeting;
+  }
+
+  const now = new Date().toISOString();
+  const { data: row, error } = await getSupabase()
+    .from('meetings')
+    .update(meetingToDb({ isActive: true, startedAt: now }))
+    .eq('id', meeting.id)
+    .select()
+    .single();
+
+  throwIfError(error, 'Failed to start meeting');
+  const host = await fetchHost(hostId);
+  return mapMeeting(row, host);
 }
 
 export async function logParticipationJoin({ meetingId, userId, role = 'participant' }) {
@@ -313,12 +348,11 @@ export async function scheduleMeeting({
         title: title || 'Scheduled Meeting',
         hostId,
         waitingRoom,
-        isActive: true,
+        isActive: false,
         scheduledAt: scheduledDate.toISOString(),
         durationMinutes,
         description: description || null,
         timezone,
-        startedAt: null,
       }),
     })
     .select()
