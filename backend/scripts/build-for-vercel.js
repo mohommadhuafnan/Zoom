@@ -11,23 +11,11 @@ const publicDir = path.join(backendDir, 'public');
 const distDir = path.join(frontendDir, 'dist');
 const rootVercelPath = path.join(repoRoot, 'vercel.json');
 
-const backendVercelPath = path.join(backendDir, 'vercel.json');
-
-function isBackendStandaloneDeploy() {
-  if (!fs.existsSync(backendVercelPath)) return false;
-  try {
-    const config = JSON.parse(fs.readFileSync(backendVercelPath, 'utf8'));
-    return config.builds?.some(
-      (b) => b.use === '@vercel/static-build' && b.config?.distDir === 'public'
-    );
-  } catch {
-    return false;
-  }
-}
-
 function isMonorepoDeploy() {
-  // Root Directory = backend uses backend/vercel.json — must build public/
-  if (isBackendStandaloneDeploy()) return false;
+  const rootDir = (process.env.VERCEL_PROJECT_SETTINGS_ROOT_DIRECTORY || '').replace(/^\.\//, '');
+  // Vercel Root Directory = backend → use backend/vercel.json and public/
+  if (rootDir === 'backend') return false;
+
   if (!fs.existsSync(rootVercelPath)) return false;
   try {
     const config = JSON.parse(fs.readFileSync(rootVercelPath, 'utf8'));
