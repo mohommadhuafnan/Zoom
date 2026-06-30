@@ -16,7 +16,7 @@ import HostToolsPanel from '../components/meeting/HostToolsPanel';
 import ReactionsMenu from '../components/meeting/ReactionsMenu';
 import PreJoinLobby from '../components/meeting/PreJoinLobby';
 import WaitingForHostScreen from '../components/meeting/WaitingForHostScreen';
-import { streamIsScreenShare } from '../utils/mediaUtils';
+import { streamIsScreenShare, mergeSelfParticipant, streamHasActiveVideo } from '../utils/mediaUtils';
 
 export default function MeetingRoom() {
   const { code } = useParams();
@@ -60,7 +60,7 @@ export default function MeetingRoom() {
     stopAll,
   } = useLocalMedia();
 
-  const { remoteStreams, connectToExistingPeers, cleanup, removePeer, handleSignal, onPeerJoined } =
+  const { remoteStreams, connectToExistingPeers, cleanup, removePeer, handleSignal } =
     useWebRTC({
       localStream,
       enabled: phase === 'joined',
@@ -162,11 +162,9 @@ export default function MeetingRoom() {
   }, [phase, audioMuted, videoOff, screenSharing, broadcastMediaState]);
 
   const handleSignalRef = useRef(handleSignal);
-  const onPeerJoinedRef = useRef(onPeerJoined);
   const connectPeersRef = useRef(connectToExistingPeers);
   const removePeerRef = useRef(removePeer);
   handleSignalRef.current = handleSignal;
-  onPeerJoinedRef.current = onPeerJoined;
   connectPeersRef.current = connectToExistingPeers;
   removePeerRef.current = removePeer;
 
@@ -175,9 +173,7 @@ export default function MeetingRoom() {
     setError('');
 
     try {
-      if (!localStream && (!audioMuted || !videoOff)) {
-        await startMedia({ audio: !audioMuted, video: !videoOff });
-      }
+      await startMedia({ audio: !audioMuted, video: !videoOff });
 
       const guest = getGuestSession();
       const token = localStorage.getItem('token');
@@ -201,14 +197,6 @@ export default function MeetingRoom() {
         handlers: {
           onParticipants: (list) => setParticipants(list),
           onExistingPeers: (peers) => connectPeersRef.current(peers),
-          onPeerJoined: (peer) => {
-            setParticipants((prev) => {
-              const id = peer.peerId || peer.socketId;
-              if (prev.some((p) => (p.peerId || p.socketId) === id)) return prev;
-              return [...prev, peer];
-            });
-            onPeerJoinedRef.current(peer);
-          },
           onPeerLeft: ({ peerId: leftId }) => {
             setParticipants((prev) =>
               prev.filter((p) => (p.peerId || p.socketId) !== leftId)
@@ -299,15 +287,8 @@ export default function MeetingRoom() {
       videoOff,
       screenSharing,
     };
-    const others = participants.filter(
-      (p) => (p.peerId || p.socketId) !== myPeerId
-    );
-    if (others.length === 0 && phase === 'joined') return [self];
-    const hasSelf = participants.some(
-      (p) => (p.peerId || p.socketId) === myPeerId
-    );
-    return hasSelf ? participants : [self, ...others];
-  }, [participants, myPeerId, displayName, isHost, audioMuted, videoOff, screenSharing, phase]);
+    return mergeSelfParticipant(participants, self, myPeerId);
+  }, [participants, myPeerId, displayName, isHost, audioMuted, videoOff, screenSharing]);
 
   const activeScreenShare = useMemo(() => {
     if (screenSharing && localStream) {
@@ -424,18 +405,40 @@ export default function MeetingRoom() {
     const peerId = p.peerId || p.socketId;
     const isLocal = peerId === myPeerId;
     const stream = isLocal ? localStream : remoteStreams.get(peerId);
+    const showVideoOff = forceAvatar || (p.videoOff && !streamHasActiveVideo(stream));
     return (
-      <div key={peerId} className={compact ? 'w-44 shrink-0 h-full' : 'min-h-0'}>
+      <div key={peerId} className={compact ? 'w-44 shrink-0 h-full' : 'min-h-0 h-full'}>
         <VideoTile
           stream={forceAvatar ? null : stream}
           name={p.displayName || (isLocal ? displayName : 'Participant')}
           isLocal={isLocal}
           muted={isLocal}
-          videoOff={forceAvatar || p.videoOff}
+          videoOff={showVideoOff}
           fill
         />
       </div>
     );
+  };
+
+  const spotlightRemote =
+    !activeScreenShare && remoteEntries.length === 1
+      ? (() => {
+          const [peerId, stream] = remoteEntries[0];
+          const p = allParticipants.find((x) => (x.peerId || x.socketId) === peerId);
+          return {
+            peerId,
+            stream,
+            name: p?.displayName || 'Participant',
+            videoOff: p?.videoOff,
+          };
+        })()
+      : null;
+
+  const selfParticipant = {
+    peerId: myPeerId,
+    socketId: myPeerId,
+    displayName,
+    videoOff,
   };
 
   return (
@@ -489,22 +492,23 @@ export default function MeetingRoom() {
                 )}
               </div>
             </div>
+          ) : spotlightRemote ? (
+            <div className="flex flex-col h-full w-full gap-2 min-h-0">
+              <div className="flex-1 min-h-0">
+                <VideoTile
+                  stream={spotlightRemote.stream}
+                  name={spotlightRemote.name}
+                  videoOff={spotlightRemote.videoOff && !streamHasActiveVideo(spotlightRemote.stream)}
+                  fill
+                />
+              </div>
+              <div className="flex gap-2 h-28 sm:h-32 shrink-0 overflow-x-auto pb-1">
+                {renderParticipantTile(selfParticipant, { compact: true })}
+              </div>
+            </div>
           ) : (
             <div className={`grid ${gridClass} gap-2 sm:gap-3 h-full w-full`}>
-              {renderParticipantTile({
-                peerId: myPeerId,
-                socketId: myPeerId,
-                displayName,
-                videoOff,
-              })}
-              {remoteEntries.map(([peerId]) => {
-                const participant = participants.find(
-                  (p) => (p.peerId || p.socketId) === peerId
-                );
-                return renderParticipantTile(
-                  participant || { peerId, displayName: 'Participant', videoOff: false }
-                );
-              })}
+              {allParticipants.map((p) => renderParticipantTile(p))}
             </div>
           )}
 

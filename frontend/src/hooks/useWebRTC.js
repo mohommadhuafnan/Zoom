@@ -21,22 +21,6 @@ export function useWebRTC({ localStream, enabled, signaling }) {
     signalingRef.current = signaling;
   }, [signaling]);
 
-  useEffect(() => {
-    peersRef.current.forEach((pc) => {
-      const stream = localStreamRef.current;
-      if (!stream) return;
-      const videoTrack = stream.getVideoTracks()[0];
-      const audioTrack = stream.getAudioTracks()[0];
-      const senders = pc.getSenders();
-      const videoSender = senders.find((s) => s.track?.kind === 'video');
-      const audioSender = senders.find((s) => s.track?.kind === 'audio');
-      if (videoSender && videoTrack) videoSender.replaceTrack(videoTrack).catch(() => {});
-      else if (videoTrack) pc.addTrack(videoTrack, stream);
-      if (audioSender && audioTrack) audioSender.replaceTrack(audioTrack).catch(() => {});
-      else if (audioTrack) pc.addTrack(audioTrack, stream);
-    });
-  }, [localStream]);
-
   const updateRemoteStream = useCallback((peerId, stream) => {
     setRemoteStreams((prev) => {
       const next = new Map(prev);
@@ -45,6 +29,62 @@ export function useWebRTC({ localStream, enabled, signaling }) {
       return next;
     });
   }, []);
+
+  const renegotiatePeer = useCallback(async (pc, peerId) => {
+    if (!pc || pc.signalingState === 'closed') return;
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      signalingRef.current?.sendSignal('offer', { to: peerId, offer: pc.localDescription });
+    } catch (err) {
+      console.error('WebRTC renegotiation failed:', err);
+    }
+  }, []);
+
+  const syncLocalTracks = useCallback(
+    async (pc, peerId, stream) => {
+      if (!stream) return false;
+      let needsRenegotiate = false;
+      const senders = pc.getSenders();
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTrack = stream.getAudioTracks()[0];
+      const videoSender = senders.find((s) => s.track?.kind === 'video');
+      const audioSender = senders.find((s) => s.track?.kind === 'audio');
+
+      if (videoTrack) {
+        if (videoSender) {
+          await videoSender.replaceTrack(videoTrack).catch(() => {});
+        } else {
+          pc.addTrack(videoTrack, stream);
+          needsRenegotiate = true;
+        }
+      } else if (videoSender) {
+        await videoSender.replaceTrack(null).catch(() => {});
+      }
+
+      if (audioTrack) {
+        if (audioSender) {
+          await audioSender.replaceTrack(audioTrack).catch(() => {});
+        } else {
+          pc.addTrack(audioTrack, stream);
+          needsRenegotiate = true;
+        }
+      } else if (audioSender) {
+        await audioSender.replaceTrack(null).catch(() => {});
+      }
+
+      if (needsRenegotiate) await renegotiatePeer(pc, peerId);
+      return needsRenegotiate;
+    },
+    [renegotiatePeer]
+  );
+
+  useEffect(() => {
+    if (!enabled) return;
+    peersRef.current.forEach((pc, peerId) => {
+      syncLocalTracks(pc, peerId, localStreamRef.current);
+    });
+  }, [localStream, enabled, syncLocalTracks]);
 
   const createPeerConnection = useCallback(
     (peerId, isInitiator) => {
@@ -117,33 +157,40 @@ export function useWebRTC({ localStream, enabled, signaling }) {
       if (!from) return;
 
       if (type === 'offer' && offer) {
-        const pc = createPeerConnection(from, false);
+        let pc = peersRef.current.get(from);
+        const isNew = !pc;
+        if (!pc) pc = createPeerConnection(from, false);
+
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const ans = await pc.createAnswer();
         await pc.setLocalDescription(ans);
         signalingRef.current?.sendSignal('answer', { to: from, answer: pc.localDescription });
+
+        if (isNew) {
+          await syncLocalTracks(pc, from, localStreamRef.current);
+        }
       } else if (type === 'answer' && answer) {
         const pc = peersRef.current.get(from);
-        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        if (pc) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+          } catch {
+            /* ignore stale signaling */
+          }
+        }
       } else if (type === 'ice' && candidate) {
         const pc = peersRef.current.get(from);
         if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
       }
     },
-    [createPeerConnection]
+    [createPeerConnection, syncLocalTracks]
   );
 
   const connectToExistingPeers = useCallback(
     (peerIds) => {
-      peerIds.forEach((peerId) => createPeerConnection(peerId, true));
-    },
-    [createPeerConnection]
-  );
-
-  const onPeerJoined = useCallback(
-    (peer) => {
-      const peerId = peer.peerId || peer.socketId;
-      if (peerId) createPeerConnection(peerId, true);
+      peerIds.forEach((peerId) => {
+        if (peerId) createPeerConnection(peerId, true);
+      });
     },
     [createPeerConnection]
   );
@@ -160,6 +207,6 @@ export function useWebRTC({ localStream, enabled, signaling }) {
     cleanup,
     removePeer,
     handleSignal,
-    onPeerJoined,
+    onPeerJoined: () => {},
   };
 }

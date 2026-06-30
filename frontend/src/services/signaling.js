@@ -1,4 +1,5 @@
 import { supabase, supabaseConfigured } from '../lib/supabase.js';
+import { dedupeParticipants } from '../utils/mediaUtils.js';
 import { getSocket, connectSocket, connectSocketAsGuest } from './socket.js';
 
 function mapPresenceToParticipant(presence) {
@@ -11,6 +12,15 @@ function mapPresenceToParticipant(presence) {
     videoOff: !!presence.videoOff,
     screenSharing: !!presence.screenSharing,
   };
+}
+
+function removeRealtimeChannel(channelName) {
+  const topic = `realtime:${channelName}`;
+  for (const ch of supabase.getChannels()) {
+    if (ch.topic === topic) {
+      supabase.removeChannel(ch);
+    }
+  }
 }
 
 function connectSocketSignaling({ meetingCode, peerId, displayName, token, guestName, guestId, handlers }) {
@@ -28,12 +38,12 @@ function connectSocketSignaling({ meetingCode, peerId, displayName, token, guest
       socket.off('connect_error', onError);
 
       socket.on('room:joined', ({ participants, existingPeers }) => {
-        handlers.onParticipants?.(participants);
+        handlers.onParticipants?.(dedupeParticipants(participants));
         handlers.onExistingPeers?.(existingPeers);
       });
       socket.on('peer:joined', (peer) => handlers.onPeerJoined?.(peer));
       socket.on('peer:left', ({ socketId }) => handlers.onPeerLeft?.({ peerId: socketId }));
-      socket.on('participants:update', (list) => handlers.onParticipants?.(list));
+      socket.on('participants:update', (list) => handlers.onParticipants?.(dedupeParticipants(list)));
       socket.on('webrtc:offer', (p) => handlers.onSignal?.({ type: 'offer', ...p }));
       socket.on('webrtc:answer', (p) => handlers.onSignal?.({ type: 'answer', ...p }));
       socket.on('webrtc:ice-candidate', (p) => handlers.onSignal?.({ type: 'ice', ...p }));
@@ -109,11 +119,22 @@ function connectSocketSignaling({ meetingCode, peerId, displayName, token, guest
 }
 
 function connectSupabaseSignaling({ meetingCode, peerId, displayName, isHost, handlers }) {
-  const channel = supabase.channel(`meeting:${meetingCode}`, {
+  const channelName = `meeting:${meetingCode}`;
+  removeRealtimeChannel(channelName);
+
+  const channel = supabase.channel(channelName, {
     config: { presence: { key: peerId } },
   });
 
   let joined = false;
+  let presencePayload = {
+    peerId,
+    displayName,
+    isHost,
+    audioMuted: true,
+    videoOff: true,
+    screenSharing: false,
+  };
 
   channel
     .on('presence', { event: 'sync' }, () => {
@@ -121,7 +142,7 @@ function connectSupabaseSignaling({ meetingCode, peerId, displayName, isHost, ha
       const list = Object.values(state)
         .flat()
         .map(mapPresenceToParticipant);
-      handlers.onParticipants?.(list);
+      handlers.onParticipants?.(dedupeParticipants(list));
     })
     .on('presence', { event: 'join' }, ({ newPresences }) => {
       newPresences.forEach((p) => {
@@ -151,22 +172,17 @@ function connectSupabaseSignaling({ meetingCode, peerId, displayName, isHost, ha
     channel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         clearTimeout(timeout);
-        await channel.track({
-          peerId,
-          displayName,
-          isHost,
-          audioMuted: false,
-          videoOff: false,
-          screenSharing: false,
-          joinedAt: Date.now(),
-        });
+        await channel.track(presencePayload);
         joined = true;
 
         const state = channel.presenceState();
-        const existingPeers = Object.values(state)
-          .flat()
+        const existingPeers = dedupeParticipants(
+          Object.values(state)
+            .flat()
+            .map(mapPresenceToParticipant)
+        )
           .map((p) => p.peerId)
-          .filter((id) => id !== peerId);
+          .filter((id) => id && id !== peerId);
 
         handlers.onExistingPeers?.(existingPeers);
 
@@ -196,13 +212,13 @@ function connectSupabaseSignaling({ meetingCode, peerId, displayName, isHost, ha
             });
           },
           updateMediaState(media) {
-            channel.track({
-              peerId,
-              displayName,
-              isHost,
-              ...media,
-              joinedAt: Date.now(),
-            });
+            presencePayload = {
+              ...presencePayload,
+              audioMuted: !!media.audioMuted,
+              videoOff: !!media.videoOff,
+              screenSharing: !!media.screenSharing,
+            };
+            channel.track(presencePayload);
           },
           endMeeting() {
             channel.send({ type: 'broadcast', event: 'meeting-ended', payload: {} });
@@ -230,7 +246,9 @@ const WAIT_CHANNEL_PREFIX = 'meeting-wait:';
 
 export function subscribeMeetingStarted(meetingCode, onStarted) {
   if (!supabaseConfigured) return () => {};
-  const channel = supabase.channel(`${WAIT_CHANNEL_PREFIX}${meetingCode}`);
+  const channelName = `${WAIT_CHANNEL_PREFIX}${meetingCode}`;
+  removeRealtimeChannel(channelName);
+  const channel = supabase.channel(channelName);
   channel.on('broadcast', { event: 'meeting-started' }, () => onStarted());
   channel.subscribe();
   return () => supabase.removeChannel(channel);
@@ -238,7 +256,9 @@ export function subscribeMeetingStarted(meetingCode, onStarted) {
 
 export async function broadcastMeetingStarted(meetingCode) {
   if (!supabaseConfigured) return;
-  const channel = supabase.channel(`${WAIT_CHANNEL_PREFIX}${meetingCode}`);
+  const channelName = `${WAIT_CHANNEL_PREFIX}${meetingCode}`;
+  removeRealtimeChannel(channelName);
+  const channel = supabase.channel(channelName);
   await new Promise((resolve) => {
     const timeout = setTimeout(resolve, 2500);
     channel.subscribe((status) => {
