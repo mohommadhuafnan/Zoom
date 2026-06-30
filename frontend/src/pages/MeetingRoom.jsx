@@ -16,6 +16,7 @@ import HostToolsPanel from '../components/meeting/HostToolsPanel';
 import ReactionsMenu from '../components/meeting/ReactionsMenu';
 import PreJoinLobby from '../components/meeting/PreJoinLobby';
 import WaitingForHostScreen from '../components/meeting/WaitingForHostScreen';
+import { streamIsScreenShare } from '../utils/mediaUtils';
 
 export default function MeetingRoom() {
   const { code } = useParams();
@@ -296,6 +297,7 @@ export default function MeetingRoom() {
       isHost,
       audioMuted,
       videoOff,
+      screenSharing,
     };
     const others = participants.filter(
       (p) => (p.peerId || p.socketId) !== myPeerId
@@ -305,7 +307,43 @@ export default function MeetingRoom() {
       (p) => (p.peerId || p.socketId) === myPeerId
     );
     return hasSelf ? participants : [self, ...others];
-  }, [participants, myPeerId, displayName, isHost, audioMuted, videoOff, phase]);
+  }, [participants, myPeerId, displayName, isHost, audioMuted, videoOff, screenSharing, phase]);
+
+  const activeScreenShare = useMemo(() => {
+    if (screenSharing && localStream) {
+      return {
+        peerId: myPeerId,
+        stream: localStream,
+        name: displayName,
+        isLocal: true,
+      };
+    }
+    const sharer = participants.find((p) => p.screenSharing);
+    if (sharer) {
+      const peerId = sharer.peerId || sharer.socketId;
+      const stream = remoteStreams.get(peerId);
+      if (stream) {
+        return {
+          peerId,
+          stream,
+          name: sharer.displayName || 'Participant',
+          isLocal: false,
+        };
+      }
+    }
+    for (const [peerId, stream] of remoteStreams) {
+      if (streamIsScreenShare(stream)) {
+        const p = participants.find((x) => (x.peerId || x.socketId) === peerId);
+        return {
+          peerId,
+          stream,
+          name: p?.displayName || 'Participant',
+          isLocal: false,
+        };
+      }
+    }
+    return null;
+  }, [screenSharing, localStream, myPeerId, displayName, participants, remoteStreams]);
 
   const participantCount = allParticipants.length || 1;
 
@@ -382,6 +420,24 @@ export default function MeetingRoom() {
         ? 'grid-cols-2'
         : 'grid-cols-3';
 
+  const renderParticipantTile = (p, { compact = false, forceAvatar = false } = {}) => {
+    const peerId = p.peerId || p.socketId;
+    const isLocal = peerId === myPeerId;
+    const stream = isLocal ? localStream : remoteStreams.get(peerId);
+    return (
+      <div key={peerId} className={compact ? 'w-44 shrink-0 h-full' : 'min-h-0'}>
+        <VideoTile
+          stream={forceAvatar ? null : stream}
+          name={p.displayName || (isLocal ? displayName : 'Participant')}
+          isLocal={isLocal}
+          muted={isLocal}
+          videoOff={forceAvatar || p.videoOff}
+          fill
+        />
+      </div>
+    );
+  };
+
   return (
     <div className="h-screen flex flex-col bg-zoom-dark overflow-hidden">
       <header className="h-10 bg-black/80 flex items-center px-4 shrink-0 text-white text-sm z-10">
@@ -412,30 +468,45 @@ export default function MeetingRoom() {
           ref={videoAreaRef}
           className="flex-1 p-2 sm:p-4 overflow-hidden bg-black min-h-0"
         >
-          <div className={`grid ${gridClass} gap-2 sm:gap-3 h-full w-full`}>
-            <VideoTile
-              stream={localStream}
-              name={displayName}
-              isLocal
-              muted
-              videoOff={videoOff}
-              fill
-            />
-            {remoteEntries.map(([peerId, stream]) => {
-              const participant = participants.find(
-                (p) => (p.peerId || p.socketId) === peerId
-              );
-              return (
+          {activeScreenShare ? (
+            <div className="flex flex-col h-full w-full gap-2 min-h-0">
+              <div className="flex-1 min-h-0 relative">
                 <VideoTile
-                  key={peerId}
-                  stream={stream}
-                  name={participant?.displayName || 'Participant'}
-                  videoOff={participant?.videoOff}
+                  stream={activeScreenShare.stream}
+                  name={`${activeScreenShare.name} is sharing`}
+                  isLocal={activeScreenShare.isLocal}
+                  muted={activeScreenShare.isLocal}
+                  isScreenShare
                   fill
                 />
-              );
-            })}
-          </div>
+              </div>
+              <div className="flex gap-2 h-28 sm:h-32 shrink-0 overflow-x-auto pb-1">
+                {allParticipants.map((p) =>
+                  renderParticipantTile(p, {
+                    compact: true,
+                    forceAvatar: (p.peerId || p.socketId) === activeScreenShare.peerId,
+                  })
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className={`grid ${gridClass} gap-2 sm:gap-3 h-full w-full`}>
+              {renderParticipantTile({
+                peerId: myPeerId,
+                socketId: myPeerId,
+                displayName,
+                videoOff,
+              })}
+              {remoteEntries.map(([peerId]) => {
+                const participant = participants.find(
+                  (p) => (p.peerId || p.socketId) === peerId
+                );
+                return renderParticipantTile(
+                  participant || { peerId, displayName: 'Participant', videoOff: false }
+                );
+              })}
+            </div>
+          )}
 
           {floatingReaction && (
             <div className="fixed bottom-28 left-1/2 -translate-x-1/2 text-5xl animate-bounce z-50 pointer-events-none">

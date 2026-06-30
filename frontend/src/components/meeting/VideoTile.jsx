@@ -1,23 +1,34 @@
 import { useEffect, useRef } from 'react';
+import { streamHasActiveVideo, streamIsScreenShare } from '../../utils/mediaUtils';
 
-export default function VideoTile({ stream, name, muted = false, isLocal = false, videoOff = false, fill = false }) {
+export default function VideoTile({
+  stream,
+  name,
+  muted = false,
+  isLocal = false,
+  videoOff = false,
+  fill = false,
+  isScreenShare = false,
+  className = '',
+}) {
   const videoRef = useRef(null);
+  const sharingScreen = isScreenShare || streamIsScreenShare(stream);
+  const hasActiveVideo = streamHasActiveVideo(stream);
+  const showPlaceholder = !hasActiveVideo || (!sharingScreen && videoOff);
 
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    if (stream) {
+    if (stream && !showPlaceholder) {
       el.srcObject = stream;
     } else {
       el.srcObject = null;
     }
-  }, [stream]);
-
-  const showPlaceholder = !stream || videoOff || (isLocal && stream && !stream.getVideoTracks()[0]?.enabled);
+  }, [stream, showPlaceholder]);
 
   return (
     <div
-      className={`relative bg-zinc-900 overflow-hidden ${
+      className={`relative bg-zinc-900 overflow-hidden ${className} ${
         fill ? 'h-full min-h-0 rounded-lg' : 'rounded-xl aspect-video min-h-[180px]'
       }`}
     >
@@ -27,7 +38,9 @@ export default function VideoTile({ stream, name, muted = false, isLocal = false
           autoPlay
           playsInline
           muted={muted || isLocal}
-          className={`w-full h-full object-cover ${isLocal ? 'scale-x-[-1]' : ''}`}
+          className={`w-full h-full ${
+            sharingScreen ? 'object-contain bg-black' : 'object-cover'
+          } ${isLocal && !sharingScreen ? 'scale-x-[-1]' : ''}`}
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-zinc-800">
@@ -36,8 +49,14 @@ export default function VideoTile({ stream, name, muted = false, isLocal = false
           </div>
         </div>
       )}
-      <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md">
-        {name}{isLocal ? ' (me)' : ''}
+      {sharingScreen && !showPlaceholder && (
+        <div className="absolute top-2 left-2 bg-green-600/90 text-white text-xs px-2 py-1 rounded-md font-medium">
+          Screen share
+        </div>
+      )}
+      <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md max-w-[90%] truncate">
+        {name}
+        {isLocal ? ' (me)' : ''}
       </div>
     </div>
   );

@@ -131,6 +131,7 @@ export function useLocalMedia() {
       ]);
       setLocalStream(newStream);
       setScreenSharing(true);
+      setVideoOff(false);
       return newStream;
     } catch (err) {
       console.error('Screen share failed:', err);
@@ -144,7 +145,13 @@ export function useLocalMedia() {
 
     const camera = cameraStreamRef.current;
     if (camera) {
-      setLocalStream(new MediaStream(camera.getTracks()));
+      const restored = new MediaStream(camera.getTracks());
+      setLocalStream(restored);
+      const vt = restored.getVideoTracks()[0];
+      setVideoOff(!vt || !vt.enabled);
+    } else {
+      setLocalStream(null);
+      setVideoOff(true);
     }
     setScreenSharing(false);
   }, []);
