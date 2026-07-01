@@ -3,7 +3,7 @@ import { env } from '../config/env.js';
 
 const router = Router();
 
-const DEFAULT_VERSION = '1.1.1';
+const DEFAULT_VERSION = '1.2.1';
 const GITHUB_REPO = 'mohommadhuafnan/Zoom';
 
 router.get('/info', (_req, res) => {
