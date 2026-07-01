@@ -1,4 +1,4 @@
-const DEFAULT_VERSION = '1.2.0';
+const DEFAULT_VERSION = '1.2.1';
 const GITHUB_REPO = 'mohommadhuafnan/Zoom';
 
 export function getPublicAppBase() {

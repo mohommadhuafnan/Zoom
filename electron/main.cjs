@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const { spawn } = require('child_process');
-const { setupAutoUpdater } = require('./updater.cjs');
+const { initAutoUpdater, attachUpdateWindow } = require('./updater.cjs');
 
 const PORT = process.env.UNIMEET_PORT || '5123';
 const isDev = !app.isPackaged;
@@ -115,9 +115,9 @@ function createWindow() {
   mainWindow.loadURL(startUrl);
 
   mainWindow.once('ready-to-show', () => {
+    attachUpdateWindow(mainWindow);
     mainWindow.show();
     mainWindow.focus();
-    setupAutoUpdater(mainWindow, isDev);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -138,6 +138,10 @@ function stopBackend() {
 
 app.whenReady().then(async () => {
   ipcMain.handle('app:version', () => app.getVersion());
+
+  if (!isDev) {
+    initAutoUpdater(isDev);
+  }
 
   startBackend();
   const ok = await waitForServer(`http://localhost:${PORT}/api/health`);
