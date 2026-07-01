@@ -3,6 +3,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 function resolveClientUrl() {
+  if (process.env.DESKTOP_MODE === 'true') {
+    return process.env.CLIENT_URL || `http://localhost:${process.env.PORT || '5123'}`;
+  }
   if (process.env.CLIENT_URL) return process.env.CLIENT_URL;
   if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
     return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;

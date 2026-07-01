@@ -281,6 +281,13 @@ export async function broadcastMeetingStarted(meetingCode) {
 }
 
 export function connectMeetingSignaling(options) {
+  const isDesktop =
+    import.meta.env.VITE_DESKTOP === 'true' ||
+    (typeof window !== 'undefined' && window.unimeetDesktop?.isDesktop);
+
+  if (isDesktop) {
+    return connectSocketSignaling(options);
+  }
   if (supabaseConfigured) {
     return connectSupabaseSignaling(options);
   }

@@ -7,10 +7,12 @@ import JoinMeeting from './pages/JoinMeeting';
 import MeetingRoom from './pages/MeetingRoom';
 import History from './pages/History';
 import Profile from './pages/Profile';
+import DownloadApp from './pages/DownloadApp';
 
 export default function App() {
   return (
     <Routes>
+      <Route path="/download" element={<DownloadApp />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route

@@ -16,7 +16,7 @@ export default function VideoTile({
   const sharingScreen = isScreenShare || streamIsScreenShare(stream);
   const hasActiveVideo = streamHasActiveVideo(stream);
   const hasActiveAudio = stream?.getAudioTracks().some((t) => t.enabled && t.readyState === 'live');
-  const showPlaceholder = !hasActiveVideo || (!sharingScreen && videoOff);
+  const showPlaceholder = !hasActiveVideo || (isLocal && !sharingScreen && videoOff);
 
   useEffect(() => {
     const videoEl = videoRef.current;

@@ -1,6 +1,10 @@
 const API_BASE =
   import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD ? '/api' : 'http://localhost:5000/api');
+  (import.meta.env.VITE_DESKTOP === 'true'
+    ? 'http://localhost:5123/api'
+    : import.meta.env.PROD
+      ? '/api'
+      : 'http://localhost:5000/api');
 
 function getToken() {
   return localStorage.getItem('token');
@@ -59,6 +63,9 @@ export const api = {
   getMeeting: (code) => request(`/meetings/${code}`),
 
   endMeeting: (id) => request(`/meetings/${id}/end`, { method: 'POST' }),
+
+  endMeetingByCode: (code) =>
+    request(`/meetings/${encodeURIComponent(code)}/end`, { method: 'POST' }),
 
   getHistory: () => request('/meetings/history'),
 };

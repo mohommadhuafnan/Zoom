@@ -3,6 +3,11 @@ dist/
 backend/public/
 uploads/
 .env
+vercel-env-import.env
 *.log
 .DS_Store
 .vercel
+release/
+scripts/.download-url.txt
+frontend/public/downloads/*.exe
+backend/public/downloads/*.exe

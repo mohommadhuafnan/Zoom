@@ -2,6 +2,7 @@ import { io } from 'socket.io-client';
 
 function getSocketUrl() {
   if (import.meta.env.VITE_SOCKET_URL) return import.meta.env.VITE_SOCKET_URL;
+  if (import.meta.env.VITE_DESKTOP === 'true') return 'http://localhost:5123';
   if (import.meta.env.PROD && typeof window !== 'undefined') return window.location.origin;
   return 'http://localhost:5000';
 }

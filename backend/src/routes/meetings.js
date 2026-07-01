@@ -4,6 +4,7 @@ import {
   createMeeting,
   getMeetingByCode,
   endMeeting,
+  endMeetingByCode,
   startMeetingByCode,
   getUserMeetingHistory,
   scheduleMeeting,
@@ -133,6 +134,15 @@ router.get('/join/:code', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:code/end', authMiddleware, async (req, res) => {
+  try {
+    const meeting = await endMeetingByCode(req.params.code, req.user.userId);
+    res.json({ meeting });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 

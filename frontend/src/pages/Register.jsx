@@ -89,6 +89,11 @@ export default function Register() {
               Sign in
             </Link>
           </p>
+          <p className="text-center text-sm text-gray-500 pt-1">
+            <Link to="/download" className="text-zoom-blue hover:underline font-medium">
+              Download desktop app for Windows →
+            </Link>
+          </p>
         </form>
       </div>
     </div>

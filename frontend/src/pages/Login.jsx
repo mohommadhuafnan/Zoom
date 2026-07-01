@@ -76,6 +76,11 @@ export default function Login() {
               Sign up
             </Link>
           </p>
+          <p className="text-center text-sm text-gray-500 pt-1">
+            <Link to="/download" className="text-zoom-blue hover:underline font-medium">
+              Download desktop app for Windows →
+            </Link>
+          </p>
         </form>
       </div>
     </div>

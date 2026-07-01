@@ -19,6 +19,7 @@ import WaitingForHostScreen from '../components/meeting/WaitingForHostScreen';
 import ParticipantPiP from '../components/meeting/ParticipantPiP';
 import MeetingThankYouScreen from '../components/meeting/MeetingThankYouScreen';
 import { streamIsScreenShare, mergeSelfParticipant, streamHasActiveVideo } from '../utils/mediaUtils';
+import { getMeetingGridClass, resolveParticipantStream } from '../utils/meetingGrid';
 
 export default function MeetingRoom() {
   const { code } = useParams();
@@ -48,6 +49,7 @@ export default function MeetingRoom() {
 
   const signalingRef = useRef(null);
   const [signalingApi, setSignalingApi] = useState(null);
+  const mediaStreamRef = useRef(null);
   const videoAreaRef = useRef(null);
   const reactionsRef = useRef(null);
 
@@ -64,7 +66,7 @@ export default function MeetingRoom() {
     stopAll,
   } = useLocalMedia();
 
-  const { remoteStreams, connectToExistingPeers, ensurePeerConnections, cleanup, removePeer, handleSignal } =
+  const { remoteStreams, connectToExistingPeers, ensurePeerConnections, renegotiateIfNoStream, cleanup, removePeer, handleSignal } =
     useWebRTC({
       localStream,
       enabled: phase === 'joined',
@@ -92,12 +94,16 @@ export default function MeetingRoom() {
       .getMeetingPublic(code)
       .then(({ meeting: m }) => {
         setMeeting(m);
-        if (m.ended) {
+        const hostUser = user?.id && m.hostId === user.id;
+        if (m.ended && !hostUser) {
           setError('This meeting has ended');
           setPhase('lobby');
           return;
         }
-        const hostUser = user?.id && m.hostId === user.id;
+        if (m.ended && hostUser) {
+          setPhase('lobby');
+          return;
+        }
         if (!hostUser && !m.isActive) {
           setPhase('waiting-for-host');
         } else {
@@ -164,6 +170,17 @@ export default function MeetingRoom() {
     ensurePeersRef.current(peerIds, signalingApi, localStream);
   }, [phase, participants, myPeerId, signalingApi, localStream]);
 
+  useEffect(() => {
+    if (phase !== 'joined' || !myPeerId) return;
+    const interval = setInterval(() => {
+      const peerIds = participants
+        .map((p) => p.peerId || p.socketId)
+        .filter((id) => id && id !== myPeerId);
+      renegotiateIfNoStream(peerIds);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [phase, participants, myPeerId, renegotiateIfNoStream]);
+
   const broadcastMediaState = useCallback(() => {
     signalingRef.current?.updateMediaState({ audioMuted, videoOff, screenSharing });
   }, [audioMuted, videoOff, screenSharing]);
@@ -200,6 +217,7 @@ export default function MeetingRoom() {
 
     try {
       const mediaStream = await startMedia({ audio: !audioMuted, video: !videoOff });
+      mediaStreamRef.current = mediaStream;
 
       const guest = getGuestSession();
       const token = localStorage.getItem('token');
@@ -223,9 +241,13 @@ export default function MeetingRoom() {
         handlers: {
           onParticipants: (list) => setParticipants(list),
           onPeerJoined: (peer) => {
-            const peerId = peer.peerId || peer.socketId;
-            if (peerId && signalingRef.current) {
-              ensurePeersRef.current([peerId], signalingRef.current);
+            const joinedPeerId = peer.peerId || peer.socketId;
+            if (joinedPeerId && signalingRef.current) {
+              ensurePeersRef.current(
+                [joinedPeerId],
+                signalingRef.current,
+                mediaStreamRef.current || localStream
+              );
             }
           },
           onExistingPeers: (peers) => connectPeersRef.current(peers),
@@ -265,12 +287,11 @@ export default function MeetingRoom() {
       setMyPeerId(conn.peerId);
       setIsHost(!!conn.isHost);
 
-      if (!conn.waiting && conn.existingPeers?.length) {
-        connectPeersRef.current(conn.existingPeers, conn, mediaStream);
-      }
-
       if (!conn.waiting) {
         setPhase('joined');
+        if (conn.existingPeers?.length) {
+          await connectPeersRef.current(conn.existingPeers, conn, mediaStream);
+        }
       }
     } catch (err) {
       setError(err.message || 'Failed to join meeting');
@@ -300,8 +321,12 @@ export default function MeetingRoom() {
 
   const handleEndMeeting = async () => {
     try {
-      if (isHost && meeting?.id) {
-        await api.endMeeting(meeting.id);
+      if (isHost) {
+        if (meeting?.id) {
+          await api.endMeeting(meeting.id);
+        } else {
+          await api.endMeetingByCode(code);
+        }
       }
     } catch {
       /* still notify participants */
@@ -445,23 +470,14 @@ export default function MeetingRoom() {
   }
 
   const tileCount = allParticipants.length || 1;
-  const gridClass =
-    tileCount === 1
-      ? 'grid-cols-1 h-full'
-      : tileCount === 2
-        ? 'grid-cols-1 sm:grid-cols-2 h-full'
-        : tileCount <= 4
-          ? 'grid-cols-2 h-full'
-          : 'grid-cols-2 lg:grid-cols-3 h-full';
+  const gridClass = `${getMeetingGridClass(tileCount)} h-full max-h-full`;
 
   const renderParticipantTile = (p, { compact = false, forceAvatar = false } = {}) => {
     const peerId = p.peerId || p.socketId;
     const isLocal = peerId === myPeerId;
-    let stream = isLocal ? localStream : remoteStreams.get(peerId);
-    if (!isLocal && !stream) {
-      stream = remoteStreams.get(p.socketId) || remoteStreams.get(p.peerId);
-    }
-    const showVideoOff = forceAvatar || (p.videoOff && !streamHasActiveVideo(stream));
+    const stream = resolveParticipantStream(peerId, isLocal, localStream, remoteStreams, myPeerId);
+    const showVideoOff =
+      forceAvatar || (isLocal && p.videoOff && !streamHasActiveVideo(stream));
     return (
       <div key={peerId} className={compact ? 'w-44 shrink-0 h-full' : 'min-h-0 h-full'}>
         <VideoTile

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Minimize2, Maximize2 } from 'lucide-react';
 import VideoTile from './VideoTile';
 import { streamHasActiveVideo } from '../../utils/mediaUtils';
+import { resolveParticipantStream } from '../../utils/meetingGrid';
 
 export default function ParticipantPiP({
   participants,
@@ -25,11 +26,8 @@ export default function ParticipantPiP({
   const getStream = (p) => {
     const peerId = p.peerId || p.socketId;
     const isLocal = peerId === myPeerId;
-    if (isLocal) {
-      if (screenSharing && cameraStream) return cameraStream;
-      return localStream;
-    }
-    return remoteStreams.get(peerId);
+    if (isLocal && screenSharing && cameraStream) return cameraStream;
+    return resolveParticipantStream(peerId, isLocal, localStream, remoteStreams, myPeerId);
   };
 
   if (minimized) {
@@ -63,7 +61,7 @@ export default function ParticipantPiP({
           const peerId = p.peerId || p.socketId;
           const isLocal = peerId === myPeerId;
           const stream = getStream(p);
-          const showVideoOff = p.videoOff && !streamHasActiveVideo(stream);
+          const showVideoOff = isLocal && p.videoOff && !streamHasActiveVideo(stream);
           return (
             <div
               key={peerId}

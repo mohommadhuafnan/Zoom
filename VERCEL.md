@@ -9,6 +9,24 @@ The repo includes a root `vercel.json` that deploys both services:
 
 Click **Refresh** on the Vercel import screen after pushing.
 
+## GitHub auto-deploy fix (Afnan's projects / 404 / "public not found")
+
+If GitHub deploy fails with **"No Output Directory named public"**:
+
+### Option A — Recommended: Root Directory = `.` (repo root)
+1. Vercel → **zoom** project → **Settings** → **General**
+2. **Root Directory** → leave **empty** or set to `.`
+3. **Save** → **Redeploy**
+
+Uses root `vercel.json` (frontend + API together).
+
+### Option B — Root Directory = `backend`
+Uses `backend/vercel.json` which:
+- Builds React app into `backend/public/`
+- Runs Express API via `backend/index.js`
+
+After push, GitHub will auto-redeploy. Ensure **Environment Variables** are set on this project too (same as below).
+
 ## 2. Environment variables (Vercel → Project → Settings → Environment Variables)
 
 **Critical:** Add these for **Production** and **Preview** or the API will crash with `FUNCTION_INVOCATION_FAILED`.

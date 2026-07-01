@@ -52,7 +52,7 @@ export default function JoinMeeting() {
 
     try {
       const { meeting } = await api.getMeetingPublic(trimmedCode);
-      if (meeting.ended) {
+      if (meeting.ended && user?.id !== meeting.hostId) {
         setError('This meeting has ended');
         return;
       }

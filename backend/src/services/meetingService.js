@@ -96,15 +96,31 @@ export async function endMeeting(meetingId, hostId) {
     throw err;
   }
 
+  const patch = { isActive: false };
+  // Instant meetings: mark ended. Scheduled meetings: only stop the live session so they can start again.
+  if (!meeting.scheduledAt) {
+    patch.endedAt = new Date().toISOString();
+  }
+
   const { data: row, error } = await getSupabase()
     .from('meetings')
-    .update(meetingToDb({ isActive: false, endedAt: new Date().toISOString() }))
+    .update(meetingToDb(patch))
     .eq('id', meetingId)
     .select()
     .single();
 
   throwIfError(error, 'Failed to end meeting');
   return mapMeeting(row, meeting.host);
+}
+
+export async function endMeetingByCode(meetingCode, hostId) {
+  const meeting = await getMeetingByCode(meetingCode);
+  if (!meeting) {
+    const err = new Error('Meeting not found');
+    err.status = 404;
+    throw err;
+  }
+  return endMeeting(meeting.id, hostId);
 }
 
 export async function startMeetingByCode(meetingCode, hostId) {
@@ -119,8 +135,8 @@ export async function startMeetingByCode(meetingCode, hostId) {
     err.status = 403;
     throw err;
   }
-  if (meeting.endedAt) {
-    const err = new Error('This meeting has already ended');
+  if (meeting.endedAt && meeting.scheduledAt) {
+    const err = new Error('This meeting has been cancelled');
     err.status = 400;
     throw err;
   }
@@ -131,7 +147,13 @@ export async function startMeetingByCode(meetingCode, hostId) {
   const now = new Date().toISOString();
   const { data: row, error } = await getSupabase()
     .from('meetings')
-    .update(meetingToDb({ isActive: true, startedAt: now }))
+    .update(
+      meetingToDb({
+        isActive: true,
+        startedAt: meeting.startedAt || now,
+        endedAt: null,
+      })
+    )
     .eq('id', meeting.id)
     .select()
     .single();

@@ -1,0 +1,65 @@
+name: Desktop Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Read app version
+        id: ver
+        shell: bash
+        run: echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Create backend .env from secrets
+        shell: bash
+        run: |
+          cat > backend/.env << EOF
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_JWKS_URL=${{ secrets.SUPABASE_JWKS_URL }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN=7d
+          NODE_ENV=production
+          CLIENT_URL=${{ secrets.CLIENT_URL }}
+          EOF
+
+      - name: Build Windows installer
+        run: npm run build:desktop
+        env:
+          VITE_PUBLIC_APP_URL: ${{ secrets.CLIENT_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          VITE_APP_VERSION: ${{ steps.ver.outputs.tag }}
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || steps.ver.outputs.tag }}
+          name: UniMeet Desktop ${{ github.ref_type == 'tag' && github.ref_name || steps.ver.outputs.tag }}
+          body: |
+            ## UniMeet for Windows
+
+            1. Download **UniMeet-Setup-*.exe** below
+            2. Run the installer (turn off Smart App Control if Windows blocks it)
+            3. Open UniMeet from your desktop and sign in
+
+            **Share page:** ${{ secrets.CLIENT_URL }}/download
+          files: release/UniMeet-Setup-*.exe
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

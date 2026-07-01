@@ -233,6 +233,14 @@ export function useLocalMedia() {
 
   useEffect(() => () => stopAll(), [stopAll]);
 
+  useEffect(() => {
+    if (!localStream) return;
+    const vt = localStream.getVideoTracks()[0];
+    const at = localStream.getAudioTracks()[0];
+    setVideoOff(!vt?.enabled);
+    setAudioMuted(!at?.enabled);
+  }, [localStream]);
+
   return {
     localStream,
     cameraStream,
