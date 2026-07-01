@@ -19,6 +19,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install root dependencies
+        run: npm ci
+
       - name: Read app version
         id: ver
         shell: bash
@@ -55,12 +58,14 @@ jobs:
           body: |
             ## UniMeet for Windows
 
-            1. Download **UniMeet-Setup-*.exe** below
+            1. Download **UniMeet-Setup-*.exe** below (or ZIP if browser blocks .exe)
             2. If Windows warns, click **Keep** then **Run anyway** (you do not need to turn off Windows Security)
             3. Open UniMeet from your desktop and sign in
 
             **Share page:** ${{ secrets.CLIENT_URL }}/download
-          files: release/UniMeet-Setup-*.exe
+          files: |
+            release/UniMeet-Setup-*.exe
+            release/UniMeet-Setup-*.zip
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

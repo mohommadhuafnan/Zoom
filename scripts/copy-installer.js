@@ -27,10 +27,7 @@ const version = exe.match(/UniMeet-Setup-(.+)\.exe/)?.[1] || '1.1.0';
 const zipName = `UniMeet-Setup-${version}.zip`;
 const zipPath = path.join(releaseDir, zipName);
 
-const targets = [
-  path.join(root, 'frontend', 'public', 'downloads', 'UniMeet-Setup.exe'),
-  path.join(root, 'backend', 'public', 'downloads', 'UniMeet-Setup.exe'),
-];
+const targets = [];
 
 for (const dest of targets) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
