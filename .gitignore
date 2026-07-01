@@ -4,6 +4,8 @@ backend/public/
 uploads/
 .env
 vercel-env-import.env
+scripts/push-vercel-env-api.js
+scripts/set-afnan-vercel-env.ps1
 *.log
 .DS_Store
 .vercel
