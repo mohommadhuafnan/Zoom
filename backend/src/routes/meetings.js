@@ -26,7 +26,7 @@ router.post('/', authMiddleware, async (req, res) => {
     });
     res.status(201).json({
       meeting,
-      joinUrl: `${env.clientUrl}/join/${meeting.meetingCode}`,
+      joinUrl: `${env.publicAppUrl}/join/${meeting.meetingCode}`,
     });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });

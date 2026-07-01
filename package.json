@@ -1,6 +1,6 @@
 {
   "name": "unimeet-desktop",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "UniMeet — desktop video conferencing for Windows, Mac, and Linux",
   "author": "UniMeet",
   "private": true,
@@ -48,7 +48,8 @@
           ]
         }
       ],
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "publisherName": "UniMeet"
     },
     "nsis": {
       "oneClick": false,

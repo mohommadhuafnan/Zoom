@@ -1,7 +1,7 @@
 import { env } from '../config/env.js';
 
 export function buildJoinUrl(meetingCode) {
-  const base = env.clientUrl.replace(/\/$/, '');
+  const base = env.publicAppUrl.replace(/\/$/, '');
   return `${base}/join/${meetingCode}`;
 }
 

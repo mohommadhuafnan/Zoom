@@ -36,6 +36,7 @@ jobs:
           JWT_EXPIRES_IN=7d
           NODE_ENV=production
           CLIENT_URL=${{ secrets.CLIENT_URL }}
+          PUBLIC_APP_URL=${{ secrets.PUBLIC_APP_URL || secrets.CLIENT_URL }}
           EOF
 
       - name: Build Windows installer
@@ -55,7 +56,7 @@ jobs:
             ## UniMeet for Windows
 
             1. Download **UniMeet-Setup-*.exe** below
-            2. Run the installer (turn off Smart App Control if Windows blocks it)
+            2. If Windows warns, click **Keep** then **Run anyway** (you do not need to turn off Windows Security)
             3. Open UniMeet from your desktop and sign in
 
             **Share page:** ${{ secrets.CLIENT_URL }}/download

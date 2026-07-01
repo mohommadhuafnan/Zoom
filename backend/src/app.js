@@ -37,6 +37,7 @@ export function createApp() {
       timestamp: new Date().toISOString(),
       env: env.nodeEnv,
       desktop: isDesktop,
+      publicAppUrl: env.publicAppUrl,
       supabase: Boolean(env.supabase.url && env.supabase.secretKey),
     });
   });

@@ -3,7 +3,7 @@ import { env } from '../config/env.js';
 
 const router = Router();
 
-const DEFAULT_VERSION = '1.1.0';
+const DEFAULT_VERSION = '1.1.1';
 const GITHUB_REPO = 'mohommadhuafnan/Zoom';
 
 router.get('/info', (_req, res) => {
@@ -23,7 +23,7 @@ router.get('/info', (_req, res) => {
     downloadUrl,
     zipDownloadUrl,
     directSetupUrl: downloadUrl,
-    shareUrl: `${baseUrl}/download`,
+    shareUrl: `${env.publicAppUrl}/download`,
     desktop: process.env.DESKTOP_MODE === 'true',
   });
 });

@@ -7,14 +7,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
 const releaseDir = path.join(root, 'release');
 
-const exe = fs
+const exes = fs
   .readdirSync(releaseDir)
-  .find((f) => f.startsWith('UniMeet-Setup') && f.endsWith('.exe'));
+  .filter((f) => f.startsWith('UniMeet-Setup') && f.endsWith('.exe'));
 
-if (!exe) {
+if (!exes.length) {
   console.error('No UniMeet-Setup-*.exe in release/. Run: npm run build:desktop');
   process.exit(1);
 }
+
+const exe = exes.sort((a, b) => {
+  const va = a.match(/UniMeet-Setup-(.+)\.exe/)?.[1] || '0';
+  const vb = b.match(/UniMeet-Setup-(.+)\.exe/)?.[1] || '0';
+  return vb.localeCompare(va, undefined, { numeric: true });
+})[0];
 
 const src = path.join(releaseDir, exe);
 const version = exe.match(/UniMeet-Setup-(.+)\.exe/)?.[1] || '1.1.0';

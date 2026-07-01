@@ -15,23 +15,25 @@ function getBackendDir() {
 }
 
 function loadBackendEnv(backendDir) {
+  const dotenvPath = path.join(backendDir, '.env');
+  if (fs.existsSync(dotenvPath)) {
+    require('dotenv').config({ path: dotenvPath });
+  }
+
+  const publicAppUrl =
+    process.env.PUBLIC_APP_URL ||
+    (process.env.CLIENT_URL && !/localhost/i.test(process.env.CLIENT_URL)
+      ? process.env.CLIENT_URL
+      : 'https://zoom-xi-ten.vercel.app');
+
   const env = {
     ...process.env,
     PORT,
     DESKTOP_MODE: 'true',
     NODE_ENV: 'production',
+    PUBLIC_APP_URL: publicAppUrl.replace(/\/$/, ''),
     CLIENT_URL: isDev ? 'http://localhost:5173' : `http://localhost:${PORT}`,
   };
-
-  const dotenvPath = path.join(backendDir, '.env');
-  if (fs.existsSync(dotenvPath)) {
-    require('dotenv').config({ path: dotenvPath });
-    Object.assign(env, process.env);
-    env.PORT = PORT;
-    env.DESKTOP_MODE = 'true';
-    env.NODE_ENV = 'production';
-    env.CLIENT_URL = isDev ? 'http://localhost:5173' : `http://localhost:${PORT}`;
-  }
 
   return env;
 }
