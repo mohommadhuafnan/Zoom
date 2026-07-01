@@ -22,6 +22,11 @@ export function getInstallerUrl() {
   return `https://github.com/${GITHUB_REPO}/releases/latest/download/UniMeet-Setup-${version}.exe`;
 }
 
+export function getZipInstallerUrl() {
+  const version = import.meta.env.VITE_APP_VERSION || DEFAULT_VERSION;
+  return `https://github.com/${GITHUB_REPO}/releases/latest/download/UniMeet-Setup-${version}.zip`;
+}
+
 export async function fetchAppInfo() {
   try {
     const base =
@@ -39,6 +44,7 @@ export async function fetchAppInfo() {
       name: 'UniMeet',
       version: DEFAULT_VERSION,
       downloadUrl: getInstallerUrl(),
+      zipDownloadUrl: getZipInstallerUrl(),
       shareUrl: getDownloadPageUrl(),
     };
   }

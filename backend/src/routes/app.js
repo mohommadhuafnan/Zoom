@@ -12,12 +12,16 @@ router.get('/info', (_req, res) => {
   const downloadUrl =
     process.env.APP_DOWNLOAD_URL ||
     `https://github.com/${GITHUB_REPO}/releases/latest/download/UniMeet-Setup-${version}.exe`;
+  const zipDownloadUrl =
+    process.env.APP_ZIP_DOWNLOAD_URL ||
+    `https://github.com/${GITHUB_REPO}/releases/latest/download/UniMeet-Setup-${version}.zip`;
 
   res.json({
     name: 'UniMeet',
     version,
     platform: 'windows',
     downloadUrl,
+    zipDownloadUrl,
     directSetupUrl: downloadUrl,
     shareUrl: `${baseUrl}/download`,
     desktop: process.env.DESKTOP_MODE === 'true',

@@ -55,7 +55,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "UniMeet"
+      "shortcutName": "UniMeet",
+      "uninstallDisplayName": "UniMeet"
     },
     "mac": {
       "target": "dmg",
