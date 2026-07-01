@@ -66,6 +66,7 @@ jobs:
           files: |
             release/UniMeet-Setup-*.exe
             release/UniMeet-Setup-*.zip
+            release/latest.yml
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

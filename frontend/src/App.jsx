@@ -8,10 +8,13 @@ import MeetingRoom from './pages/MeetingRoom';
 import History from './pages/History';
 import Profile from './pages/Profile';
 import DownloadApp from './pages/DownloadApp';
+import UpdatePrompt from './components/desktop/UpdatePrompt';
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <UpdatePrompt />
+      <Routes>
       <Route path="/download" element={<DownloadApp />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
@@ -43,6 +46,7 @@ export default function App() {
         }
       />
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </>
   );
 }

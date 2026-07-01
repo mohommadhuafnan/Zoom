@@ -1,8 +1,9 @@
-const { app, BrowserWindow, shell, dialog } = require('electron');
+const { app, BrowserWindow, shell, dialog, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const { spawn } = require('child_process');
+const { setupAutoUpdater } = require('./updater.cjs');
 
 const PORT = process.env.UNIMEET_PORT || '5123';
 const isDev = !app.isPackaged;
@@ -116,6 +117,7 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.focus();
+    setupAutoUpdater(mainWindow, isDev);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -135,6 +137,8 @@ function stopBackend() {
 }
 
 app.whenReady().then(async () => {
+  ipcMain.handle('app:version', () => app.getVersion());
+
   startBackend();
   const ok = await waitForServer(`http://localhost:${PORT}/api/health`);
   if (!ok) {

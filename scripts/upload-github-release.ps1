@@ -44,7 +44,11 @@ try {
     Write-Host "Created release $tag (id $($release.id))"
 }
 
-foreach ($file in @($exe, $zip)) {
+$latestYml = Get-ChildItem "$root\release\latest.yml" -ErrorAction SilentlyContinue
+$assets = @($exe, $zip)
+if ($latestYml) { $assets += $latestYml }
+
+foreach ($file in $assets) {
     $name = $file.Name
     $uploadUrl = "https://uploads.github.com/repos/mohommadhuafnan/Zoom/releases/$($release.id)/assets?name=$name"
     Invoke-RestMethod -Uri $uploadUrl -Method Post -Headers @{

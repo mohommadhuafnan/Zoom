@@ -122,6 +122,33 @@ Or enable **Developer Mode** in Windows Settings → Privacy & Security → For 
 
 ---
 
+## Auto-updates (desktop app)
+
+When users open UniMeet, the app checks GitHub Releases for a newer version.
+
+1. User sees **“Update available”** popup → **Update now**
+2. Download progress is shown in the app
+3. **Restart and install** applies the update (same as Zoom, Discord, etc.)
+
+Users can also use **Profile → Check for updates**.
+
+### Releasing a new version
+
+1. Bump `version` in root `package.json` (e.g. `1.2.0` → `1.2.1`)
+2. Build and publish:
+
+```bash
+npm run build:desktop
+powershell -ExecutionPolicy Bypass -File scripts/upload-github-release.ps1
+```
+
+3. Upload must include **`latest.yml`** (generated in `release/`) — the upload script does this automatically.
+4. Update Vercel `APP_VERSION` and `APP_DOWNLOAD_URL` if needed.
+
+**Important:** Users on **v1.1.1 or older** must install **v1.2.0** once manually (download page). After that, future updates happen inside the app.
+
+---
+
 ## Project scripts (root)
 
 | Command | Description |

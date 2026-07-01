@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { RefreshCw } from 'lucide-react';
 import AppLayout from '../components/layout/AppLayout';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -10,6 +11,11 @@ export default function Profile() {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [updateMessage, setUpdateMessage] = useState('');
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const isDesktop =
+    import.meta.env.VITE_DESKTOP === 'true' ||
+    (typeof window !== 'undefined' && window.unimeetDesktop?.isDesktop);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -29,6 +35,23 @@ export default function Profile() {
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleCheckUpdate = async () => {
+    if (!window.unimeetDesktop?.checkForUpdates) return;
+    setCheckingUpdate(true);
+    setUpdateMessage('');
+    const result = await window.unimeetDesktop.checkForUpdates();
+    setCheckingUpdate(false);
+    if (!result?.ok) {
+      setUpdateMessage(result?.message || 'Could not check for updates');
+      return;
+    }
+    if (result.updateInfo?.version) {
+      setUpdateMessage(`Update v${result.updateInfo.version} is available — see the popup.`);
+    } else {
+      setUpdateMessage('You are on the latest version.');
+    }
   };
 
   return (
@@ -64,6 +87,27 @@ export default function Profile() {
             {saving ? 'Saving…' : 'Save changes'}
           </button>
         </form>
+
+        {isDesktop && (
+          <div className="mt-6 bg-white rounded-2xl border border-gray-200 p-6">
+            <h3 className="font-medium text-gray-900 mb-1">App updates</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              UniMeet checks for updates when you open the app.
+            </p>
+            <button
+              type="button"
+              onClick={handleCheckUpdate}
+              disabled={checkingUpdate}
+              className="inline-flex items-center gap-2 text-sm font-medium text-zoom-blue hover:text-blue-700 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
+              {checkingUpdate ? 'Checking…' : 'Check for updates'}
+            </button>
+            {updateMessage && (
+              <p className="text-sm text-gray-600 mt-3">{updateMessage}</p>
+            )}
+          </div>
+        )}
 
         <button
           onClick={handleLogout}
